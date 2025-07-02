@@ -6,28 +6,38 @@
     android:padding="16dp">
 
     <TextView
-        android:id="@+id/textTitle"
+        android:id="@+id/textCartTitle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Food Menu"
+        android:text="Your Cart"
         android:textSize="24sp"
         android:textStyle="bold"
         android:layout_gravity="center_horizontal"
         android:layout_marginBottom="8dp" />
 
     <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/recyclerViewFood"
+        android:id="@+id/recyclerViewCart"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:clipToPadding="false"
         android:paddingBottom="8dp" />
 
-    <Button
-        android:id="@+id/buttonViewCart"
-        android:layout_width="match_parent"
+    <TextView
+        android:id="@+id/textTotalPrice"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="View Cart"
+        android:text="Total: $0.00"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:layout_gravity="end"
         android:layout_marginTop="8dp" />
 
-</LinearLayout>
+    <Button
+        android:id="@+id/buttonPlaceOrder"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Place Order"
+        android:layout_marginTop="12dp" />
+
+</LinearLayout> 
