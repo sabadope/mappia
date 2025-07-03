@@ -2,38 +2,124 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp">
+    android:orientation="vertical">
 
-    <FrameLayout
+    <LinearLayout
+        android:id="@+id/topContainer"
         android:layout_width="match_parent"
-        android:layout_height="115dp"
-        android:layout_marginBottom="8dp">
-
-        <androidx.viewpager2.widget.ViewPager2
-            android:id="@+id/imageSliderViewPager"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:overScrollMode="never" />
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_top_container_rounded"
+        android:padding="16dp"
+        android:orientation="vertical">
 
         <LinearLayout
-            android:id="@+id/layoutImageSliderDots"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:gravity="center"
-            android:layout_gravity="bottom|center_horizontal"
-            android:layout_marginBottom="16dp"
-            android:background="@android:color/transparent" />
-    </FrameLayout>
+            android:gravity="center_vertical"
+            android:layout_marginBottom="10dp">
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/recyclerViewCategories"
-        android:layout_width="match_parent"
-        android:layout_height="85dp"
-        android:layout_marginTop="8dp"
-        android:layout_marginBottom="12dp"
-        android:orientation="horizontal"
-        android:overScrollMode="never" />
+            <!-- Left: Greeting and location -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/textGreeting"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Greetings! [Name]"
+                    android:layout_marginBottom="4dp"
+                    android:textSize="22sp"
+                    android:textStyle="bold"
+                    android:textColor="#222222" />
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="4dp"
+                    android:layout_marginTop="2dp">
+
+                    <ImageView
+                        android:id="@+id/iconLocation"
+                        android:layout_width="16dp"
+                        android:layout_height="16dp"
+                        android:src="@drawable/location"
+                        android:tint="#666666" />
+
+                    <TextView
+                        android:id="@+id/textLocation"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Taguig City"
+                        android:textSize="16sp"
+                        android:textColor="#666666"
+                        android:layout_marginStart="4dp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Right: Search and Cart buttons -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="end">
+
+                <ImageView
+                    android:id="@+id/buttonSearch"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:src="@drawable/search"
+                    android:background="@drawable/circle_button_bg"
+                    android:padding="8dp"
+                    android:tint="#222222"
+                    android:layout_marginEnd="8dp" />
+
+                <ImageView
+                    android:id="@+id/buttonCart"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:src="@drawable/bag"
+                    android:background="@drawable/circle_button_bg"
+                    android:padding="8dp"
+                    android:tint="#222222" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="115dp"
+            android:layout_marginBottom="8dp">
+
+            <androidx.viewpager2.widget.ViewPager2
+                android:id="@+id/imageSliderViewPager"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:overScrollMode="never" />
+
+            <LinearLayout
+                android:id="@+id/layoutImageSliderDots"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center"
+                android:layout_gravity="bottom|center_horizontal"
+                android:layout_marginBottom="16dp"
+                android:background="@android:color/transparent" />
+        </FrameLayout>
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recyclerViewCategories"
+            android:layout_width="match_parent"
+            android:layout_height="85dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="12dp"
+            android:orientation="horizontal"
+            android:overScrollMode="never" />
+    </LinearLayout>
 
 </LinearLayout>
