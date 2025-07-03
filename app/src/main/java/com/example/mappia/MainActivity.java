@@ -2,35 +2,29 @@ package com.example.mappia;
 
 import android.content.Intent;
 import android.os.Bundle;
-import android.widget.Button;
-import android.widget.Toast;
-
+import android.os.Handler;
+import android.os.Looper;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager2.widget.ViewPager2;
-import android.widget.LinearLayout;
-import android.widget.ImageView;
-import android.graphics.drawable.Drawable;
-import androidx.core.content.ContextCompat;
-
 import java.util.ArrayList;
 import java.util.List;
-import android.os.Handler;
-import android.os.Looper;
 
 public class MainActivity extends AppCompatActivity {
-    private RecyclerView recyclerViewFood;
-    private Button buttonViewCart;
-    private FoodAdapter foodAdapter;
-    private List<FoodItem> foodList;
     private ViewPager2 imageSliderViewPager;
     private LinearLayout layoutImageSliderDots;
     private ImageSliderAdapter imageSliderAdapter;
     private List<Integer> imageSliderImages;
     private Handler imageSliderHandler = new Handler(Looper.getMainLooper());
     private Runnable imageSliderRunnable;
+    private RecyclerView recyclerViewCategories;
+    private CategoryAdapter categoryAdapter;
+    private List<CategoryItem> categoryList;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -39,16 +33,10 @@ public class MainActivity extends AppCompatActivity {
 
         imageSliderViewPager = findViewById(R.id.imageSliderViewPager);
         layoutImageSliderDots = findViewById(R.id.layoutImageSliderDots);
-        recyclerViewFood = findViewById(R.id.recyclerViewFood);
-        buttonViewCart = findViewById(R.id.buttonViewCart);
+        recyclerViewCategories = findViewById(R.id.recyclerViewCategories);
 
         setupImageSlider();
-        setupFoodList();
-        setupRecyclerView();
-
-        buttonViewCart.setOnClickListener(v -> {
-            startActivity(new Intent(this, CartActivity.class));
-        });
+        setupCategoryList();
     }
 
     private void setupImageSlider() {
@@ -58,6 +46,12 @@ public class MainActivity extends AppCompatActivity {
         imageSliderImages.add(R.drawable.slider_image3);
         imageSliderAdapter = new ImageSliderAdapter(imageSliderImages);
         imageSliderViewPager.setAdapter(imageSliderAdapter);
+        imageSliderViewPager.setPageTransformer((page, position) -> {
+            float scale = 0.92f + (1 - Math.abs(position)) * 0.08f;
+            page.setScaleY(scale);
+            page.setScaleX(scale);
+            page.setAlpha(0.7f + (1 - Math.abs(position)) * 0.3f);
+        });
         setupImageSliderDots();
         setCurrentImageSliderDot(0);
         imageSliderViewPager.registerOnPageChangeCallback(new ViewPager2.OnPageChangeCallback() {
@@ -108,22 +102,23 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void setupFoodList() {
-        foodList = new ArrayList<>();
-        foodList.add(new FoodItem(1, "Burger", R.drawable.ic_launcher_foreground, 5.99));
-        foodList.add(new FoodItem(2, "Pizza", R.drawable.ic_launcher_background, 8.49));
-        foodList.add(new FoodItem(3, "Sushi", R.drawable.ic_launcher_foreground, 12.99));
-        foodList.add(new FoodItem(4, "Salad", R.drawable.ic_launcher_background, 6.49));
-        foodList.add(new FoodItem(5, "Pasta", R.drawable.ic_launcher_foreground, 7.99));
-    }
-
-    private void setupRecyclerView() {
-        foodAdapter = new FoodAdapter(foodList, item -> {
-            Cart.getInstance().addItem(item);
-            Toast.makeText(this, item.getName() + " added to cart!", Toast.LENGTH_SHORT).show();
+    private void setupCategoryList() {
+        categoryList = new ArrayList<>();
+        categoryList.add(new CategoryItem(R.drawable.ic_launcher_foreground, "Burger"));
+        categoryList.add(new CategoryItem(R.drawable.ic_launcher_foreground, "Fries"));
+        categoryList.add(new CategoryItem(R.drawable.ic_launcher_foreground, "Pizza"));
+        categoryList.add(new CategoryItem(R.drawable.ic_launcher_foreground, "Sushi"));
+        categoryList.add(new CategoryItem(R.drawable.ic_launcher_foreground, "Salad"));
+        categoryList.add(new CategoryItem(R.drawable.ic_launcher_foreground, "Drinks"));
+        categoryAdapter = new CategoryAdapter(categoryList, item -> {
+            Intent intent = new Intent(this, CategoryActivity.class);
+            intent.putExtra("imageResId", item.getImageResId());
+            intent.putExtra("name", item.getName());
+            startActivity(intent);
         });
-        recyclerViewFood.setLayoutManager(new LinearLayoutManager(this));
-        recyclerViewFood.setAdapter(foodAdapter);
+        LinearLayoutManager layoutManager = new LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false);
+        recyclerViewCategories.setLayoutManager(layoutManager);
+        recyclerViewCategories.setAdapter(categoryAdapter);
     }
 
     @Override

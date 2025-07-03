@@ -13,7 +13,8 @@
         <androidx.viewpager2.widget.ViewPager2
             android:id="@+id/imageSliderViewPager"
             android:layout_width="match_parent"
-            android:layout_height="match_parent" />
+            android:layout_height="match_parent"
+            android:overScrollMode="never" />
 
         <LinearLayout
             android:id="@+id/layoutImageSliderDots"
@@ -26,29 +27,13 @@
             android:background="@android:color/transparent" />
     </FrameLayout>
 
-    <TextView
-        android:id="@+id/textTitle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Food Menu"
-        android:textSize="24sp"
-        android:textStyle="bold"
-        android:layout_gravity="center_horizontal"
-        android:layout_marginBottom="8dp" />
-
     <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/recyclerViewFood"
+        android:id="@+id/recyclerViewCategories"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:clipToPadding="false"
-        android:paddingBottom="8dp" />
-
-    <Button
-        android:id="@+id/buttonViewCart"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="View Cart"
-        android:layout_marginTop="8dp" />
+        android:layout_height="85dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="12dp"
+        android:orientation="horizontal"
+        android:overScrollMode="never" />
 
 </LinearLayout>
