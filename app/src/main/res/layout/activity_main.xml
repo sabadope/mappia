@@ -5,6 +5,27 @@
     android:orientation="vertical"
     android:padding="16dp">
 
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="115dp"
+        android:layout_marginBottom="8dp">
+
+        <androidx.viewpager2.widget.ViewPager2
+            android:id="@+id/imageSliderViewPager"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <LinearLayout
+            android:id="@+id/layoutImageSliderDots"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="16dp"
+            android:background="@android:color/transparent" />
+    </FrameLayout>
+
     <TextView
         android:id="@+id/textTitle"
         android:layout_width="wrap_content"
