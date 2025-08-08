@@ -140,12 +140,11 @@ class _ManageScreenState extends State<_ManageScreen> {
   }
 
   Future<void> _fetchFoods() async {
-    if (_userId == null) return;
     setState(() => _isLoadingFoods = true);
+    // Fetch all foods and join with users to get restaurant name
     final response = await Supabase.instance.client
         .from('foods')
-        .select()
-        .eq('created_by', _userId!)
+        .select('*, users!foods_created_by_fkey(name)')
         .order('created_at', ascending: false);
     final foods = List<Map<String, dynamic>>.from(response as List);
     setState(() {
@@ -844,7 +843,7 @@ class _ManageScreenState extends State<_ManageScreen> {
                                                   child: Column(
                                                     crossAxisAlignment: CrossAxisAlignment.start,
                                                     children: [
-                                                      // Grouped container for food name, 3-dot menu, and details
+                                                      // Grouped container for food name, restaurant name, 3-dot menu, and details
                                                       Container(
                                                         child: Column(
                                                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -864,6 +863,14 @@ class _ManageScreenState extends State<_ManageScreen> {
                                                                         overflow: TextOverflow.ellipsis,
                                                                       ),
                                                                       const SizedBox(height: 1),
+                                                                      // Restaurant name
+                                                                      if (food['users'] != null && food['users']['name'] != null)
+                                                                        Text(
+                                                                          food['users']['name'],
+                                                                          style: const TextStyle(fontSize: 13, color: Colors.blueGrey, fontWeight: FontWeight.w600),
+                                                                          maxLines: 1,
+                                                                          overflow: TextOverflow.ellipsis,
+                                                                        ),
                                                                       // Details in one line, ellipsis if overflow
                                                                       Text(
                                                                         food['description'] ?? '',
