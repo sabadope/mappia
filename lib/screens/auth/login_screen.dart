@@ -78,7 +78,7 @@ class _LoginScreenState extends State<LoginScreen> {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
-              builder: (context) => const AdminMainScreen(),
+              builder: (context) => const AdminMainScreen(initialTabIndex: 0),
             ),
           );
         } else {
