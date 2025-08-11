@@ -576,7 +576,6 @@ class _FoodListScreenState extends State<FoodListScreen> {
       (cat) => cat['id'] == food['category_id'],
       orElse: () => {'name': 'Uncategorized'},
     );
-    final restaurant = food['users'] != null ? food['users']['name'] ?? '' : '';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       decoration: const BoxDecoration(
@@ -648,36 +647,62 @@ class _FoodListScreenState extends State<FoodListScreen> {
                     food['description'],
                     style: const TextStyle(fontSize: 15, color: Colors.black87),
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 24),
                 ],
               ),
-            // Restaurant/creator
-            if (restaurant.isNotEmpty)
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Restaurant', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  const SizedBox(height: 6),
-                  Text(
-                    restaurant,
-                    style: const TextStyle(fontSize: 15, color: Colors.black87),
+            // Action Buttons
+            Row(
+              children: [
+                // Edit Button
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      Navigator.pop(context); // Close the bottom sheet
+                      final result = await _showAddOrEditFoodDialog(food: food);
+                      if (result == true && mounted) {
+                        _showFloatingNotification('"${food['name']}" updated successfully!', type: 'success');
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                    icon: const Icon(Icons.edit, size: 20),
+                    label: const Text(
+                      'Edit',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
                   ),
-                  const SizedBox(height: 18),
-                ],
-              ),
-            // Created at
-            if (food['created_at'] != null)
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Created At', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  const SizedBox(height: 6),
-                  Text(
-                    food['created_at'].toString(),
-                    style: const TextStyle(fontSize: 15, color: Colors.black54),
+                ),
+                const SizedBox(width: 12),
+                // Delete Button
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      Navigator.pop(context); // Close the bottom sheet
+                      _deleteFood(food['id']);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                    icon: const Icon(Icons.delete, size: 20),
+                    label: const Text(
+                      'Delete',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
                   ),
-                ],
-              ),
+                ),
+              ],
+            ),
             const SizedBox(height: 12),
           ],
         ),
