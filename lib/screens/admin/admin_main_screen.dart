@@ -13,7 +13,8 @@ import '../../core/constants/app_constants.dart';
 import 'dart:async'; // Added for Timer
 
 class AdminMainScreen extends StatefulWidget {
-  const AdminMainScreen({super.key});
+  final int initialTabIndex;
+  const AdminMainScreen({super.key, this.initialTabIndex = 0});
 
   @override
   State<AdminMainScreen> createState() => _AdminMainScreenState();
@@ -1595,7 +1596,7 @@ class _SettingsScreenState extends State<_SettingsScreen> {
 
 // Restore the _AdminMainScreenState class
 class _AdminMainScreenState extends State<AdminMainScreen> {
-  int _currentIndex = 0;
+  late int _currentIndex;
 
   final List<Widget> _screens = [
     const AdminDashboardScreen(),
@@ -1603,6 +1604,12 @@ class _AdminMainScreenState extends State<AdminMainScreen> {
     const _ManageScreen(), // Manage tab
     const _SettingsScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialTabIndex;
+  }
 
   @override
   Widget build(BuildContext context) {

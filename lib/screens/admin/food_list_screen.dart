@@ -8,6 +8,7 @@ import 'package:crypto/crypto.dart';
 import 'dart:convert';
 import '../../core/constants/app_constants.dart';
 import 'dart:async';
+import 'admin_main_screen.dart';
 
 class FoodListScreen extends StatefulWidget {
   final String title;
@@ -1213,19 +1214,34 @@ class _FoodListScreenState extends State<FoodListScreen> {
                 child: BottomNavigationBar(
                   currentIndex: 2, // Set to Manage tab index since this is food management
                   onTap: (index) {
-                    // Handle navigation based on index
+                    // Navigate directly to the correct tab/screen based on index
                     switch (index) {
                       case 0: // Dashboard
-                        Navigator.pushReplacementNamed(context, '/admin-dashboard');
+                        Navigator.of(context).pushAndRemoveUntil(
+                          MaterialPageRoute(
+                            builder: (context) => const AdminMainScreen(initialTabIndex: 0),
+                          ),
+                          (route) => false,
+                        );
                         break;
                       case 1: // Reports
-                        Navigator.pushReplacementNamed(context, '/admin-reports');
+                        Navigator.of(context).pushAndRemoveUntil(
+                          MaterialPageRoute(
+                            builder: (context) => const AdminMainScreen(initialTabIndex: 1),
+                          ),
+                          (route) => false,
+                        );
                         break;
                       case 2: // Manage (current screen)
                         // Already here, do nothing
                         break;
                       case 3: // Settings
-                        Navigator.pushReplacementNamed(context, '/admin-settings');
+                        Navigator.of(context).pushAndRemoveUntil(
+                          MaterialPageRoute(
+                            builder: (context) => const AdminMainScreen(initialTabIndex: 3),
+                          ),
+                          (route) => false,
+                        );
                         break;
                     }
                   },
