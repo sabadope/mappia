@@ -369,76 +369,6 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> w
               );
             },
           ),
-          PopupMenuButton<String>(
-            icon: const CircleAvatar(
-              backgroundColor: Colors.white24,
-              child: Icon(Icons.person, color: Colors.white),
-            ),
-            onSelected: (value) async {
-              if (value == 'profile') {
-                // TODO: Navigate to restaurant profile management
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Profile management coming soon!'),
-                    backgroundColor: Colors.blue,
-                  ),
-                );
-              } else if (value == 'logout') {
-                // Show logout confirmation dialog
-                final confirmed = await showDialog<bool>(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: const Text('Logout'),
-                    content: const Text('Are you sure you want to logout?'),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context, false),
-                        child: const Text('Cancel'),
-                      ),
-                      ElevatedButton(
-                        onPressed: () => Navigator.pop(context, true),
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                        child: const Text('Logout', style: TextStyle(color: Colors.white)),
-                      ),
-                    ],
-                  ),
-                );
-                
-                                 if (confirmed == true) {
-                   // Navigate to login screen
-                   Navigator.pushAndRemoveUntil(
-                     context,
-                     MaterialPageRoute(
-                       builder: (context) => const LoginScreen(),
-                     ),
-                     (route) => false,
-                   );
-                 }
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'profile',
-                child: Row(
-                  children: [
-                    Icon(Icons.person, color: Colors.blue),
-                    SizedBox(width: 8),
-                    Text('Manage Profile'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'logout',
-                child: Row(
-                  children: [
-                    Icon(Icons.logout, color: Colors.red),
-                    SizedBox(width: 8),
-                    Text('Logout'),
-                  ],
-                ),
-              ),
-            ],
-          ),
         ],
       ),
       backgroundColor: AppConstants.backgroundColor,
@@ -574,27 +504,6 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> w
                           _buildOrdersList(completedOrders, true),
                         ],
                       ),
-              ),
-              const SizedBox(height: 16),
-              // Menu management card
-              Card(
-                color: AppConstants.cardColor,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppConstants.borderRadiusLarge)),
-                elevation: 2,
-                child: ListTile(
-                  leading: const Icon(Icons.restaurant_menu, color: AppConstants.primaryColor),
-                  title: Text('Menu Management', style: AppConstants.subheadingStyle),
-                  subtitle: const Text('Add, edit, or remove menu items'),
-                  trailing: const Icon(Icons.arrow_forward_ios, color: Colors.grey),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => RestaurantMenuScreen(userId: _restaurantId),
-                      ),
-                    );
-                  },
-                ),
               ),
             ],
           ),
