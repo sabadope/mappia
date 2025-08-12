@@ -7,7 +7,7 @@ import '../home/menu_screen.dart';
 import '../admin/admin_main_screen.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
-import '../restaurant/restaurant_dashboard_screen.dart';
+import '../restaurant/restaurant_main_screen.dart';
 import '../rider/rider_dashboard_screen.dart';
 import '../rider/rider_profile_setup_screen.dart';
 import '../../services/rider_service.dart';
@@ -102,7 +102,7 @@ class _LoginScreenState extends State<LoginScreen> {
               nextScreen = RiderProfileSetupScreen(userId: userData['id']);
             }
           } else if (role == 'restaurant') {
-            nextScreen = RestaurantDashboardScreen(userId: userData['id']);
+            nextScreen = RestaurantMainScreen(userId: userData['id']);
           } else {
             nextScreen = MenuScreen(userName: name, userId: userData['id']);
           }
