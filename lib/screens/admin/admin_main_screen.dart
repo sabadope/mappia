@@ -986,170 +986,170 @@ class _ManageScreenState extends State<_ManageScreen> {
                                       );
                                     },
                                     child: Container(
-                                      margin: const EdgeInsets.only(bottom: 16),
-                                      child: Material(
-                                        elevation: 4,
-                                        borderRadius: BorderRadius.circular(20),
-                                        color: Colors.white,
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(16.0),
-                                          child: Row(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              // Image left, vertically centered, larger size
-                                              Container(
-                                                width: 92,
-                                                height: 92,
-                                                alignment: Alignment.center,
-                                                child: ClipRRect(
-                                                  borderRadius: BorderRadius.circular(16),
-                                                  child: food['image_url'] != null
-                                                      ? Image.network(food['image_url'], width: 92, height: 92, fit: BoxFit.cover)
-                                                      : Container(
-                                                    width: 92,
-                                                    height: 92,
-                                                    color: Colors.grey[200],
-                                                    child: const Icon(Icons.fastfood, size: 44, color: Colors.grey),
-                                                  ),
+                                    margin: const EdgeInsets.only(bottom: 16),
+                                    child: Material(
+                                      elevation: 4,
+                                      borderRadius: BorderRadius.circular(20),
+                                      color: Colors.white,
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(16.0),
+                                        child: Row(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            // Image left, vertically centered, larger size
+                                            Container(
+                                              width: 92,
+                                              height: 92,
+                                              alignment: Alignment.center,
+                                              child: ClipRRect(
+                                                borderRadius: BorderRadius.circular(16),
+                                                child: food['image_url'] != null
+                                                    ? Image.network(food['image_url'], width: 92, height: 92, fit: BoxFit.cover)
+                                                    : Container(
+                                                  width: 92,
+                                                  height: 92,
+                                                  color: Colors.grey[200],
+                                                  child: const Icon(Icons.fastfood, size: 44, color: Colors.grey),
                                                 ),
                                               ),
-                                              const SizedBox(width: 18),
-                                              // Main info column
-                                              Expanded(
-                                                child: Column(
-                                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                                  children: [
-                                                    // Grouped container for food name, restaurant name, 3-dot menu, and details
-                                                    Container(
-                                                      child: Column(
-                                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                                        children: [
-                                                          Row(
-                                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                                            children: [
-                                                              Expanded(
-                                                                child: Column(
-                                                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                                                  children: [
-                                                                    Text(
-                                                                      food['name'] ?? '',
-                                                                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                                                                      maxLines: 1,
-                                                                      overflow: TextOverflow.ellipsis,
-                                                                    ),
-                                                                    const SizedBox(height: 1),
-                                                                    // Restaurant name
-
-                                                                    // Details in one line, ellipsis if overflow
-                                                                    Text(
-                                                                      food['description'] ?? '',
-                                                                      style: const TextStyle(fontSize: 14, color: Colors.black87),
-                                                                      maxLines: 1,
-                                                                      overflow: TextOverflow.ellipsis,
-                                                                    ),
-                                                                  ],
-                                                                ),
-                                                              ),
-                                                              PopupMenuButton<String>(
-                                                                icon: const Icon(Icons.more_vert, color: Colors.grey),
-                                                                onSelected: (value) async {
-                                                                  if (value == 'edit') {
-                                                                    final result = await _showAddOrEditFoodDialog(food: food);
-                                                                    if (result == true && mounted) {
-                                                                      _showFloatingNotification('"${food['name']}" updated successfully!', type: 'success');
-                                                                    }
-                                                                  } else if (value == 'delete') {
-                                                                    _deleteFood(food['id']);
-                                                                  }
-                                                                },
-                                                                itemBuilder: (context) => const [
-                                                                  PopupMenuItem(
-                                                                    value: 'edit',
-                                                                    child: ListTile(
-                                                                      leading: Icon(Icons.edit, color: Colors.blue),
-                                                                      title: Text('Edit'),
-                                                                    ),
+                                            ),
+                                            const SizedBox(width: 18),
+                                            // Main info column
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  // Grouped container for food name, restaurant name, 3-dot menu, and details
+                                                  Container(
+                                                    child: Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                                      children: [
+                                                        Row(
+                                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                                          children: [
+                                                            Expanded(
+                                                              child: Column(
+                                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                                children: [
+                                                                  Text(
+                                                                    food['name'] ?? '',
+                                                                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                                                    maxLines: 1,
+                                                                    overflow: TextOverflow.ellipsis,
                                                                   ),
-                                                                  PopupMenuItem(
-                                                                    value: 'delete',
-                                                                    child: ListTile(
-                                                                      leading: Icon(Icons.delete, color: Colors.red),
-                                                                      title: Text('Delete'),
-                                                                    ),
+                                                                  const SizedBox(height: 1),
+                                                                  // Restaurant name
+
+                                                                  // Details in one line, ellipsis if overflow
+                                                                  Text(
+                                                                    food['description'] ?? '',
+                                                                    style: const TextStyle(fontSize: 14, color: Colors.black87),
+                                                                    maxLines: 1,
+                                                                    overflow: TextOverflow.ellipsis,
                                                                   ),
                                                                 ],
                                                               ),
-                                                            ],
-                                                          ),
-                                                          const SizedBox(height: 2),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                    const SizedBox(height: 8),
-                                                    // Category and price row beneath the grouped container
-                                                    Row(
-                                                      children: [
-                                                        Builder(
-                                                          builder: (context) {
-                                                            final category = _categories.firstWhere(
-                                                                  (cat) => cat['id'] == food['category_id'],
-                                                              orElse: () => {'name': 'Uncategorized'},
-                                                            );
-                                                            Color getCategoryColor(String categoryName) {
-                                                              switch (categoryName.toLowerCase()) {
-                                                                case 'main course':
-                                                                case 'main':
-                                                                  return Colors.red.withOpacity(0.1);
-                                                                case 'beverage':
-                                                                case 'drink':
-                                                                  return Colors.blue.withOpacity(0.1);
-                                                                case 'seafood':
-                                                                  return Colors.cyan.withOpacity(0.1);
-                                                                case 'grilled & bbq':
-                                                                case 'grilled':
-                                                                case 'bbq':
-                                                                  return Colors.orange.withOpacity(0.1);
-                                                                case 'pastries':
-                                                                case 'pastry':
-                                                                  return Colors.purple.withOpacity(0.1);
-                                                                case 'desserts':
-                                                                case 'dessert':
-                                                                  return Colors.yellow.withOpacity(0.1);
-                                                                case 'snacks':
-                                                                case 'snack':
-                                                                  return Colors.green.withOpacity(0.1);
-                                                                case 'etc':
-                                                                case 'other':
-                                                                  return Colors.grey.withOpacity(0.1);
-                                                                default:
-                                                                  return Colors.indigo.withOpacity(0.1);
-                                                              }
-                                                            }
-                                                            return Container(
-                                                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                                              decoration: BoxDecoration(
-                                                                color: getCategoryColor(category['name'] ?? ''),
-                                                                borderRadius: BorderRadius.circular(12),
-                                                              ),
-                                                              child: Text(
-                                                                category['name'],
-                                                                style: TextStyle(color: AppConstants.primaryColor, fontWeight: FontWeight.w600, fontSize: 12),
-                                                              ),
-                                                            );
-                                                          },
+                                                            ),
+                                                            PopupMenuButton<String>(
+                                                              icon: const Icon(Icons.more_vert, color: Colors.grey),
+                                                              onSelected: (value) async {
+                                                                if (value == 'edit') {
+                                                                  final result = await _showAddOrEditFoodDialog(food: food);
+                                                                  if (result == true && mounted) {
+                                                                    _showFloatingNotification('"${food['name']}" updated successfully!', type: 'success');
+                                                                  }
+                                                                } else if (value == 'delete') {
+                                                                  _deleteFood(food['id']);
+                                                                }
+                                                              },
+                                                              itemBuilder: (context) => const [
+                                                                PopupMenuItem(
+                                                                  value: 'edit',
+                                                                  child: ListTile(
+                                                                    leading: Icon(Icons.edit, color: Colors.blue),
+                                                                    title: Text('Edit'),
+                                                                  ),
+                                                                ),
+                                                                PopupMenuItem(
+                                                                  value: 'delete',
+                                                                  child: ListTile(
+                                                                    leading: Icon(Icons.delete, color: Colors.red),
+                                                                    title: Text('Delete'),
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ],
                                                         ),
-                                                        const Spacer(),
-                                                        Text(
-                                                          'SAR ${food['price']?.toStringAsFixed(2) ?? ''}',
-                                                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppConstants.primaryColor),
-                                                        ),
+                                                        const SizedBox(height: 2),
                                                       ],
                                                     ),
-                                                  ],
-                                                ),
+                                                  ),
+                                                  const SizedBox(height: 8),
+                                                  // Category and price row beneath the grouped container
+                                                  Row(
+                                                    children: [
+                                                      Builder(
+                                                        builder: (context) {
+                                                          final category = _categories.firstWhere(
+                                                                (cat) => cat['id'] == food['category_id'],
+                                                            orElse: () => {'name': 'Uncategorized'},
+                                                          );
+                                                          Color getCategoryColor(String categoryName) {
+                                                            switch (categoryName.toLowerCase()) {
+                                                              case 'main course':
+                                                              case 'main':
+                                                                return Colors.red.withOpacity(0.1);
+                                                              case 'beverage':
+                                                              case 'drink':
+                                                                return Colors.blue.withOpacity(0.1);
+                                                              case 'seafood':
+                                                                return Colors.cyan.withOpacity(0.1);
+                                                              case 'grilled & bbq':
+                                                              case 'grilled':
+                                                              case 'bbq':
+                                                                return Colors.orange.withOpacity(0.1);
+                                                              case 'pastries':
+                                                              case 'pastry':
+                                                                return Colors.purple.withOpacity(0.1);
+                                                              case 'desserts':
+                                                              case 'dessert':
+                                                                return Colors.yellow.withOpacity(0.1);
+                                                              case 'snacks':
+                                                              case 'snack':
+                                                                return Colors.green.withOpacity(0.1);
+                                                              case 'etc':
+                                                              case 'other':
+                                                                return Colors.grey.withOpacity(0.1);
+                                                              default:
+                                                                return Colors.indigo.withOpacity(0.1);
+                                                            }
+                                                          }
+                                                          return Container(
+                                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                                            decoration: BoxDecoration(
+                                                              color: getCategoryColor(category['name'] ?? ''),
+                                                              borderRadius: BorderRadius.circular(12),
+                                                            ),
+                                                            child: Text(
+                                                              category['name'],
+                                                              style: TextStyle(color: AppConstants.primaryColor, fontWeight: FontWeight.w600, fontSize: 12),
+                                                            ),
+                                                          );
+                                                        },
+                                                      ),
+                                                      const Spacer(),
+                                                      Text(
+                                                        'SAR ${food['price']?.toStringAsFixed(2) ?? ''}',
+                                                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppConstants.primaryColor),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ],
                                               ),
-                                            ],
+                                            ),
+                                          ],
                                           ),
                                         ),
                                       ),

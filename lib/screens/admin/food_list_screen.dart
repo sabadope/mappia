@@ -587,19 +587,19 @@ class _FoodListScreenState extends State<FoodListScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
           // Drag handle with more spacing
-          Container(
-            width: 48,
-            height: 5,
+            Container(
+              width: 48,
+              height: 5,
             margin: const EdgeInsets.only(bottom: 24),
-            decoration: BoxDecoration(
-              color: Colors.grey[300],
-              borderRadius: BorderRadius.circular(8),
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
-          ),
           // Scrollable content
           Expanded(
             child: SingleChildScrollView(
@@ -607,59 +607,59 @@ class _FoodListScreenState extends State<FoodListScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // Food image
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: food['image_url'] != null
-                        ? Image.network(food['image_url'], width: 160, height: 160, fit: BoxFit.cover)
-                        : Container(
-                            width: 160,
-                            height: 160,
-                            color: Colors.grey[200],
-                            child: const Icon(Icons.fastfood, size: 64, color: Colors.grey),
-                          ),
-                  ),
-                  const SizedBox(height: 20),
-                  // Food name
-                  Text(
-                    food['name'] ?? '',
-                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 8),
-                  // Price
-                  Text(
-                    'SAR ${food['price']?.toStringAsFixed(2) ?? ''}',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppConstants.primaryColor),
-                  ),
-                  const SizedBox(height: 12),
-                  // Category
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.indigo.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(16),
+            // Food image
+            ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: food['image_url'] != null
+                  ? Image.network(food['image_url'], width: 160, height: 160, fit: BoxFit.cover)
+                  : Container(
+                      width: 160,
+                      height: 160,
+                      color: Colors.grey[200],
+                      child: const Icon(Icons.fastfood, size: 64, color: Colors.grey),
                     ),
-                    child: Text(
-                      category['name'],
-                      style: TextStyle(color: AppConstants.primaryColor, fontWeight: FontWeight.w600, fontSize: 14),
-                    ),
-                  ),
+            ),
                   const SizedBox(height: 20),
-                  // Description
-                  if ((food['description'] ?? '').toString().isNotEmpty)
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Description', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            // Food name
+            Text(
+              food['name'] ?? '',
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            // Price
+            Text(
+              'SAR ${food['price']?.toStringAsFixed(2) ?? ''}',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppConstants.primaryColor),
+            ),
+            const SizedBox(height: 12),
+            // Category
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.indigo.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Text(
+                category['name'],
+                style: TextStyle(color: AppConstants.primaryColor, fontWeight: FontWeight.w600, fontSize: 14),
+              ),
+            ),
+                  const SizedBox(height: 20),
+            // Description
+            if ((food['description'] ?? '').toString().isNotEmpty)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Description', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                         const SizedBox(height: 8),
-                        Text(
-                          food['description'],
-                          style: const TextStyle(fontSize: 15, color: Colors.black87),
-                        ),
+                  Text(
+                    food['description'],
+                    style: const TextStyle(fontSize: 15, color: Colors.black87),
+                  ),
                         const SizedBox(height: 24),
-                      ],
-                    ),
+                ],
+              ),
                 ],
               ),
             ),
@@ -667,7 +667,7 @@ class _FoodListScreenState extends State<FoodListScreen> {
           // Action Buttons (fixed at bottom)
           const SizedBox(height: 20),
           Row(
-            children: [
+                children: [
               // Edit Button
               Expanded(
                 child: ElevatedButton.icon(
@@ -715,11 +715,11 @@ class _FoodListScreenState extends State<FoodListScreen> {
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
+                  ),
+                ],
               ),
-            ],
-          ),
           const SizedBox(height: 16),
-        ],
+          ],
       ),
     );
   }
