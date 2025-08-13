@@ -34,7 +34,7 @@ class _RestaurantMainScreenState extends State<RestaurantMainScreen> {
     _screens.clear();
     _screens.addAll([
       RestaurantDashboardScreen(userId: _userId),
-      RestaurantMenuScreen(userId: _userId),
+      const _ReportsScreen(),
       const _OrdersScreen(),
       const _SettingsScreen(),
     ]);
@@ -91,7 +91,7 @@ class _RestaurantMainScreenState extends State<RestaurantMainScreen> {
                         label: '',
                       ),
                       BottomNavigationBarItem(
-                        icon: Icon(Icons.restaurant_menu),
+                        icon: Icon(Icons.assessment),
                         label: '',
                       ),
                       BottomNavigationBarItem(
@@ -496,6 +496,220 @@ class _OrdersScreenState extends State<_OrdersScreen> with TickerProviderStateMi
                     ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// Reports Screen (restaurant analytics and reports)
+class _ReportsScreen extends StatefulWidget {
+  const _ReportsScreen();
+
+  @override
+  State<_ReportsScreen> createState() => _ReportsScreenState();
+}
+
+class _ReportsScreenState extends State<_ReportsScreen> {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Reports & Analytics'),
+        backgroundColor: AppConstants.primaryColor,
+        foregroundColor: AppConstants.textOnPrimary,
+        elevation: 0,
+      ),
+      backgroundColor: AppConstants.backgroundColor,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Restaurant Analytics',
+                style: AppConstants.headingStyle,
+              ),
+              const SizedBox(height: 24),
+              
+              // Sales Overview Card
+              Card(
+                elevation: 4,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        color: AppConstants.primaryColor,
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(16),
+                          topRight: Radius.circular(16),
+                        ),
+                      ),
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+                      child: Row(
+                        children: [
+                          Icon(Icons.trending_up, color: Colors.white),
+                          const SizedBox(width: 12),
+                          Text(
+                            'Sales Overview',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(20.0),
+                      child: Column(
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  children: [
+                                    Text(
+                                      'SAR 0.00',
+                                      style: TextStyle(
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppConstants.primaryColor,
+                                      ),
+                                    ),
+                                    Text('Today\'s Sales', style: TextStyle(color: Colors.grey[600])),
+                                  ],
+                                ),
+                              ),
+                              Expanded(
+                                child: Column(
+                                  children: [
+                                    Text(
+                                      '0',
+                                      style: TextStyle(
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppConstants.secondaryColor,
+                                      ),
+                                    ),
+                                    Text('Orders Today', style: TextStyle(color: Colors.grey[600])),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              
+              const SizedBox(height: 24),
+              
+              // Performance Metrics Card
+              Card(
+                elevation: 3,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: Icon(Icons.assessment, color: AppConstants.primaryColor),
+                      title: Text('Performance Metrics', style: TextStyle(fontWeight: FontWeight.w600)),
+                      subtitle: Text('View detailed performance data'),
+                      trailing: const Icon(Icons.arrow_forward_ios, color: Colors.grey),
+                      onTap: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Detailed analytics coming soon!'),
+                            backgroundColor: Colors.blue,
+                          ),
+                        );
+                      },
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: Icon(Icons.history, color: AppConstants.primaryColor),
+                      title: Text('Order History', style: TextStyle(fontWeight: FontWeight.w600)),
+                      subtitle: Text('View past orders and trends'),
+                      trailing: const Icon(Icons.arrow_forward_ios, color: Colors.grey),
+                      onTap: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Order history analytics coming soon!'),
+                            backgroundColor: Colors.blue,
+                          ),
+                        );
+                      },
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: Icon(Icons.people, color: AppConstants.primaryColor),
+                      title: Text('Customer Insights', style: TextStyle(fontWeight: FontWeight.w600)),
+                      subtitle: Text('Analyze customer behavior'),
+                      trailing: const Icon(Icons.arrow_forward_ios, color: Colors.grey),
+                      onTap: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Customer insights coming soon!'),
+                            backgroundColor: Colors.blue,
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              
+              const SizedBox(height: 24),
+              
+              // Quick Actions Card
+              Card(
+                elevation: 3,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: Icon(Icons.download, color: AppConstants.primaryColor),
+                      title: Text('Export Reports', style: TextStyle(fontWeight: FontWeight.w600)),
+                      subtitle: Text('Download reports in various formats'),
+                      trailing: const Icon(Icons.arrow_forward_ios, color: Colors.grey),
+                      onTap: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Report export functionality coming soon!'),
+                            backgroundColor: Colors.blue,
+                          ),
+                        );
+                      },
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: Icon(Icons.schedule, color: AppConstants.primaryColor),
+                      title: Text('Scheduled Reports', style: TextStyle(fontWeight: FontWeight.w600)),
+                      subtitle: Text('Set up automated report delivery'),
+                      trailing: const Icon(Icons.arrow_forward_ios, color: Colors.grey),
+                      onTap: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Scheduled reports coming soon!'),
+                            backgroundColor: Colors.blue,
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
