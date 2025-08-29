@@ -28,6 +28,17 @@
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>We need your location to find nearby riders for order delivery</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>We need your location to find nearby riders for order delivery, even when the app is in the background</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>We need your location to find nearby riders for order delivery, even when the app is in the background</string>
+	<key>NSLocationTemporaryUsageDescriptionDictionary</key>
+	<dict>
+		<key>NSLocationTemporaryUsageDescription</key>
+		<string>We need your location to find nearby riders for order delivery</string>
+	</dict>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

@@ -96,7 +96,7 @@ class _LoginScreenState extends State<LoginScreen> {
             riderService.setCurrentUserId(userData['id']); // Set the user ID
             final riderProfile = await riderService.getRiderProfile();
             if (riderProfile != null) {
-              nextScreen = const RiderDashboardScreen();
+              nextScreen = RiderDashboardScreen(userId: userData['id']);
             } else {
               // Send to profile setup screen
               nextScreen = RiderProfileSetupScreen(userId: userData['id']);

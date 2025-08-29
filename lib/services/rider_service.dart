@@ -31,7 +31,13 @@ class RiderService {
 
       final response = await _supabase
           .from('riders')
-          .select('*')
+          .select('''
+            *,
+            users!inner(
+              name,
+              email
+            )
+          ''')
           .eq('user_id', userId)
           .single();
 
@@ -358,13 +364,11 @@ class RiderService {
       final userId = currentUserId;
       if (userId == null) return false;
 
-      await _supabase
-          .from('riders')
-          .update({
-            'current_location': 'POINT($longitude $latitude)',
-            'updated_at': DateTime.now().toIso8601String(),
-          })
-          .eq('user_id', userId);
+      await _supabase.rpc('update_rider_location', params: {
+        'p_user_id': userId,
+        'p_latitude': latitude,
+        'p_longitude': longitude,
+      });
 
       return true;
     } catch (e) {
@@ -372,4 +376,40 @@ class RiderService {
       return false;
     }
   }
-} 
+
+  // Get assigned orders
+  Future<List<Map<String, dynamic>>> getAssignedOrders() async {
+    try {
+      final userId = currentUserId;
+      if (userId == null) return [];
+      
+      final response = await _supabase
+          .from('orders')
+          .select()
+          .eq('rider_id', userId)
+          .eq('status', 'assigned')
+          .order('created_at', ascending: false);
+          
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      print('Error getting assigned orders: $e');
+      return [];
+    }
+  }
+
+  // Watch assigned orders in real-time
+  Stream<List<Map<String, dynamic>>> watchAssignedOrders() {
+    final userId = currentUserId;
+    if (userId == null) return const Stream.empty();
+    
+    return _supabase
+        .from('orders')
+        .stream(primaryKey: ['id'])
+        .eq('rider_id', userId.toString())  // Convert to string to ensure type safety
+        .map((data) {
+          // Filter for assigned orders in the map function
+          final orders = List<Map<String, dynamic>>.from(data);
+          return orders.where((order) => order['status'] == 'assigned').toList();
+        });
+  }
+}
