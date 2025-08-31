@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'rider_service.dart';
 
 class RiderLocationService {
   static final RiderLocationService _instance = RiderLocationService._internal();
@@ -18,48 +19,82 @@ class RiderLocationService {
     _currentUserId = userId;
   }
 
+  // Get current user ID
+  String? get currentUserId => _currentUserId ?? _supabase.auth.currentUser?.id;
+
   // Get current location once
   Future<Position?> getCurrentLocation() async {
     try {
-      print('Checking location services...');
+      debugPrint('Checking location services...');
+      
       // Check if location services are enabled
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        print('Location services are disabled');
-        return null;
+        debugPrint('Location services are disabled');
+        // Request to enable location services
+        serviceEnabled = await Geolocator.openLocationSettings();
+        if (!serviceEnabled) {
+          debugPrint('User did not enable location services');
+          return null;
+        }
       }
-      print('Location services are enabled');
+      debugPrint('Location services are enabled');
 
       // Check location permissions
-      print('Checking location permissions...');
+      debugPrint('Checking location permissions...');
       LocationPermission permission = await Geolocator.checkPermission();
-      print('Current permission status: $permission');
+      debugPrint('Current permission status: $permission');
       
       if (permission == LocationPermission.denied) {
-        print('Requesting location permission...');
+        debugPrint('Requesting location permission...');
         permission = await Geolocator.requestPermission();
-        print('Permission after request: $permission');
+        debugPrint('Permission after request: $permission');
         if (permission != LocationPermission.whileInUse &&
             permission != LocationPermission.always) {
-          print('Location permissions denied by user');
+          debugPrint('Location permissions denied by user');
           return null;
         }
       }
       
       if (permission == LocationPermission.deniedForever) {
-        print('Location permissions are permanently denied');
+        debugPrint('Location permissions are permanently denied');
+        // Open app settings to enable permissions
+        await Geolocator.openAppSettings();
         return null;
       }
 
       if (permission == LocationPermission.whileInUse || 
           permission == LocationPermission.always) {
-        print('Location permission granted, getting current position...');
-        return await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high,
-          timeLimit: const Duration(seconds: 10), // Reduce timeout to 10 seconds
-        );
+        debugPrint('Location permission granted, getting current position...');
+        
+        // Try to get last known position first (faster)
+        try {
+          final lastPosition = await Geolocator.getLastKnownPosition();
+          if (lastPosition != null) {
+            debugPrint('Using last known position');
+            return lastPosition;
+          }
+        } catch (e) {
+          debugPrint('Error getting last known position: $e');
+        }
+        
+        // If no last known position, get fresh location
+        debugPrint('Getting fresh location...');
+        try {
+          return await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.high,
+            timeLimit: const Duration(seconds: 15), // Increased timeout to 15 seconds
+          );
+        } on TimeoutException {
+          debugPrint('Location request timed out');
+          // Try one more time with lower accuracy
+          return await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.medium,
+            timeLimit: const Duration(seconds: 10),
+          );
+        }
       } else {
-        print('Unexpected permission status: $permission');
+        debugPrint('Unexpected permission status: $permission');
         return null;
       }
     } catch (e) {
@@ -142,9 +177,21 @@ class RiderLocationService {
   // Update rider's online status and start/stop tracking
   Future<Map<String, dynamic>> setOnlineStatus(bool isOnline) async {
     try {
-      if (_currentUserId == null) {
-        return {'success': false, 'message': 'User not authenticated'};
+      final userId = currentUserId;
+      if (userId == null) {
+        debugPrint('Error: User ID is null in setOnlineStatus');
+        return {'success': false, 'message': 'User not authenticated. Please log in again.'};
       }
+      
+      // Get the rider profile first
+      final riderService = RiderService();
+      debugPrint('🔍 [setOnlineStatus] Getting rider profile for user ID: $userId');
+      final riderProfile = await riderService.getRiderProfile(userId: userId);
+      if (riderProfile == null) {
+        debugPrint('❌ [setOnlineStatus] Error: Rider profile not found for user ID: $userId');
+        return {'success': false, 'message': 'Rider profile not found. Please complete your rider profile first.'};
+      }
+      debugPrint('✅ [setOnlineStatus] Found rider profile with ID: ${riderProfile['id']}');
 
       if (isOnline) {
         print('Attempting to go online...');
@@ -161,44 +208,60 @@ class RiderLocationService {
           return {'success': false, 'message': 'Could not get current location. Please check your location permissions and try again.'};
         }
 
-        print('Updating online status in database...');
-        // Update location and online status in a transaction
         try {
-          await _supabase.rpc('update_rider_online_status', params: {
-            'p_user_id': _currentUserId,
-            'p_is_online': isOnline,
-            'p_latitude': position.latitude,
-            'p_longitude': position.longitude,
-          }).timeout(const Duration(seconds: 10));
-          
-          print('Starting location tracking...');
-          // Start tracking
-          final trackingStarted = await startLocationTracking();
-          if (!trackingStarted) {
-            return {'success': false, 'message': 'Failed to start location tracking'};
-          }
-          
-          return {'success': true, 'message': 'You are now online'};
+          print('Updating online status in database for rider ID: ${riderProfile['id']}');
+          final response = await _supabase
+              .from('riders')
+              .update({
+                'is_online': isOnline,
+                'updated_at': DateTime.now().toIso8601String(),
+                if (position != null)
+                  'current_location': _convertToPostGisPoint(
+                    position.latitude,
+                    position.longitude,
+                  ),
+              })
+              .eq('id', riderProfile['id'])
+              .select()
+              .single();
+
+          print('Successfully updated online status: $response');
+        } on PostgrestException catch (e) {
+          print('Error updating online status: ${e.message}');
+          return {'success': false, 'message': 'Failed to update online status: ${e.message}'};
         } catch (e) {
-          print('Error updating online status: $e');
-          return {'success': false, 'message': 'Failed to update status. Please try again.'};
+          print('Unexpected error updating online status: $e');
+          return {'success': false, 'message': 'An unexpected error occurred while updating status'};
         }
+        
+        // Successfully went online and updated location
+        return {'success': true, 'message': 'You are now online and ready to receive orders'};
       } else {
         print('Going offline...');
         // When going offline, stop tracking first
         await stopLocationTracking();
         
-        // Update online status
+        // Update online status using the rider's ID
         try {
-          await _supabase
+          print('Updating offline status in database for rider ID: ${riderProfile['id']}');
+          final response = await _supabase
               .from('riders')
-              .update({'is_online': false})
-              .eq('user_id', _currentUserId!)
-              .timeout(const Duration(seconds: 10));
+              .update({
+                'is_online': false,
+                'is_available': false, // Also set as not available when going offline
+                'updated_at': DateTime.now().toIso8601String(),
+              })
+              .eq('id', riderProfile['id'])
+              .select()
+              .single();
               
+          print('Successfully updated offline status: $response');
           return {'success': true, 'message': 'You are now offline'};
+        } on PostgrestException catch (e) {
+          print('Error updating offline status: ${e.message}');
+          return {'success': false, 'message': 'Failed to update status: ${e.message}'};
         } catch (e) {
-          print('Error going offline: $e');
+          debugPrint('Unexpected error going offline: $e');
           return {'success': false, 'message': 'Failed to go offline. Please try again.'};
         }
       }
@@ -213,5 +276,12 @@ class RiderLocationService {
     _positionStreamSubscription?.cancel();
     _positionStreamSubscription = null;
     _isTracking = false;
+  }
+  
+  // Convert latitude and longitude to PostGIS point format
+  String _convertToPostGisPoint(double latitude, double longitude) {
+    // PostGIS uses WKT (Well-Known Text) format: POINT(longitude latitude)
+    // Note: In PostGIS, coordinates are in (longitude, latitude) order
+    return 'SRID=4326;POINT($longitude $latitude)';
   }
 }

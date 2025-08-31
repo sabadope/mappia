@@ -3,7 +3,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_constants.dart';
 import 'register_screen.dart';
 import '../home/menu_screen.dart';
-import '../home/menu_screen.dart';
 import '../admin/admin_main_screen.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
@@ -40,88 +39,137 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+  // Helper function to handle navigation after successful login
+  void _navigateAfterLogin(String role, String userId, String name) {
+    Widget nextScreen;
+    
+    switch (role) {
+      case 'admin':
+        nextScreen = const AdminMainScreen(initialTabIndex: 0);
+        break;
+      case 'rider':
+        nextScreen = RiderDashboardScreen(userId: userId);
+        break;
+      case 'restaurant':
+        nextScreen = RestaurantMainScreen(userId: userId);
+        break;
+      default:
+        nextScreen = MenuScreen(userName: name, userId: userId);
+    }
+    
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => nextScreen),
+    );
+  }
+
   Future<void> _login() async {
-    setState(() {
-      _isLoading = true;
-    });
+    if (!mounted) return;
+    setState(() => _isLoading = true);
 
     if (!_formKey.currentState!.validate()) {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
       return;
     }
+
     try {
       final email = _emailController.text.trim();
       final password = _passwordController.text;
       final hashedPassword = sha256.convert(utf8.encode(password)).toString();
-      // Check if user exists in users table
+      
+      // First, check if user exists in users table
       final userData = await Supabase.instance.client
           .from('users')
           .select('id, role, name, password')
           .eq('email', email)
-          .single();
+          .maybeSingle();
+          
       if (userData == null) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('User not found.')),
         );
         setState(() => _isLoading = false);
         return;
       }
+      
       final role = userData['role'] as String;
       final name = userData['name'] as String? ?? email;
-      if (role == 'admin') {
-        // Use Supabase Auth for admin
-        final response = await Supabase.instance.client.auth.signInWithPassword(
-          email: email,
-          password: password,
+      final userId = userData['id'] as String;
+      
+      // Verify password hash
+      if (userData['password'] != hashedPassword) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Invalid credentials.')),
         );
-        if (response.user != null) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const AdminMainScreen(initialTabIndex: 0),
-            ),
+        setState(() => _isLoading = false);
+        return;
+      }
+      
+      // For admin users, use Supabase auth
+      if (role == 'admin') {
+        try {
+          final authResponse = await Supabase.instance.client.auth.signInWithPassword(
+            email: email,
+            password: password,
           );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Admin login failed.')),
-          );
-        }
-      } else {
-        // Non-admin: check password hash
-        if (userData['password'] == hashedPassword) {
-          Widget nextScreen;
-          if (role == 'rider') {
-            // Check if rider has a profile
-            final riderService = RiderService();
-            riderService.setCurrentUserId(userData['id']); // Set the user ID
-            final riderProfile = await riderService.getRiderProfile();
-            if (riderProfile != null) {
-              nextScreen = RiderDashboardScreen(userId: userData['id']);
-            } else {
-              // Send to profile setup screen
-              nextScreen = RiderProfileSetupScreen(userId: userData['id']);
-            }
-          } else if (role == 'restaurant') {
-            nextScreen = RestaurantMainScreen(userId: userData['id']);
-          } else {
-            nextScreen = MenuScreen(userName: name, userId: userData['id']);
+          
+          if (authResponse.user == null) {
+            throw Exception('Failed to authenticate admin');
           }
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) => nextScreen,
-            ),
-          );
-        } else {
+        } catch (e) {
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Incorrect password.')),
+            const SnackBar(content: Text('Admin authentication failed.')),
           );
+          setState(() => _isLoading = false);
+          return;
         }
       }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error:  [31m${e.toString()} [0m')),
+      
+      // For all users, navigate to the appropriate screen
+      if (mounted) {
+        _navigateAfterLogin(role, userId, name);
+      }
+      
+      // Now that we're authenticated, determine where to navigate
+      Widget nextScreen;
+      
+      if (role == 'admin') {
+        nextScreen = const AdminMainScreen(initialTabIndex: 0);
+      } else if (role == 'rider') {
+        // Check if rider has a profile
+        final riderService = RiderService();
+        final riderProfile = await riderService.getRiderProfile(userId: userId);
+        if (riderProfile != null) {
+          nextScreen = RiderDashboardScreen(userId: userId);
+        } else {
+          nextScreen = RiderProfileSetupScreen(userId: userId);
+        }
+      } else if (role == 'restaurant') {
+        nextScreen = RestaurantMainScreen(userId: userId);
+      } else {
+        nextScreen = MenuScreen(userName: name, userId: userId);
+      }
+      
+      if (!mounted) return;
+      
+      // Wait a brief moment to ensure auth state is properly updated
+      await Future.delayed(const Duration(milliseconds: 300));
+      
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => nextScreen),
       );
+      
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${e.toString()}')),
+        );
+        setState(() => _isLoading = false);
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

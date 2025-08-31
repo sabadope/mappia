@@ -5,9 +5,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/rider_location_service.dart';
 import '../../services/rider_service.dart';
 import '../../core/constants/app_constants.dart';
+import 'rider_profile_setup_screen.dart';
 
 class RiderDashboardScreen extends StatefulWidget {
   final String? userId;
+
   const RiderDashboardScreen({super.key, this.userId});
 
   @override
@@ -17,7 +19,7 @@ class RiderDashboardScreen extends StatefulWidget {
 class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
   final RiderLocationService _locationService = RiderLocationService();
   final RiderService _riderService = RiderService();
-  
+
   // State variables
   bool _isOnline = false;
   bool _isLoading = false;
@@ -32,73 +34,137 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
 
   StreamSubscription? _ordersSubscription;
   StreamSubscription? _locationSubscription;
-  
+
   @override
   void initState() {
     super.initState();
-    _setCurrentUserId();
-    _loadRiderData();
-    _loadDashboardData();
-    _setupOrdersSubscription();
+    _initializeDashboard();
   }
-  
+
+  Future<void> _initializeDashboard() async {
+    try {
+      setState(() => _isLoading = true);
+      
+      // Use the provided userId from the constructor
+      final userId = widget.userId;
+      if (userId == null || userId.isEmpty) {
+        debugPrint('No user ID provided to RiderDashboardScreen');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Authentication error. Please log in again.')),
+          );
+          Navigator.of(context).pop(); // Go back to login
+        }
+        return;
+      }
+
+      // Set the user ID in both services
+      _riderService.setCurrentUserId(userId);
+      _locationService.setCurrentUserId(userId);
+      debugPrint('Initializing dashboard for user ID: $userId');
+
+      // Check if rider profile exists
+      final riderProfile = await _riderService.getRiderProfile(userId: userId);
+      if (riderProfile == null) {
+        debugPrint('No rider profile found for user ID: $userId');
+        if (mounted) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => const RiderProfileSetupScreen(),
+            ),
+          );
+        }
+        return;
+      }
+
+      // If rider profile exists, load data and set up subscriptions
+      await _loadRiderData();
+      await _loadDashboardData();
+      _setupOrdersSubscription();
+    } catch (e) {
+      debugPrint('Error initializing dashboard: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error initializing dashboard: ${e.toString()}')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
   @override
   void dispose() {
     _locationSubscription?.cancel();
     _ordersSubscription?.cancel();
     super.dispose();
   }
-  
-  void _setupOrdersSubscription() {
-    _ordersSubscription?.cancel();
-    _assignedOrders.clear(); // Clear existing orders
-    
-    _ordersSubscription = _riderService.watchAssignedOrders().listen((orders) {
-      if (mounted) {
-        setState(() {
-          _assignedOrders.clear();
-          _assignedOrders.addAll(orders);
-        });
-      }
-    }, onError: (error) {
-      print('Error in orders subscription: $error');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading orders: $error')),
-        );
-      }
-    });
-  }
-  
-  Future<void> _setCurrentUserId() async {
+
+  void _setupOrdersSubscription() async {
     try {
-      // First, try to use the user ID passed from the widget
-      if (widget.userId != null) {
-        _locationService.setCurrentUserId(widget.userId!);
-        _riderService.setCurrentUserId(widget.userId!);
-        print('Set current user ID from widget: ${widget.userId}');
+      final userId = widget.userId;
+      if (userId == null) {
+        debugPrint('Cannot set up subscription: No user ID available');
         return;
       }
       
-      // Fallback to RiderService
-      final currentUserId = _riderService.currentUserId;
-      if (currentUserId != null) {
-        _locationService.setCurrentUserId(currentUserId);
-        print('Set current user ID from RiderService: $currentUserId');
-      } else {
-        print('No authenticated user found in RiderService');
-        // Try to get from Supabase as fallback
-        final user = Supabase.instance.client.auth.currentUser;
-        if (user != null) {
-          _locationService.setCurrentUserId(user.id);
-          _riderService.setCurrentUserId(user.id);
-          print('Set current user ID from Supabase: ${user.id}');
-        } else {
-          print('No authenticated user found in Supabase either');
+      final profile = await _riderService.getRiderProfile(userId: userId);
+      if (profile == null) {
+        debugPrint('Error: Could not load rider profile');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not load rider profile')),
+          );
         }
+        return;
+      }
+
+      final profileId = profile['id'];
+      debugPrint('Setting up orders subscription for profile: $profileId');
+
+      print(
+        '🔄 [DEBUG] Setting up orders subscription for profile: $profileId',
+      );
+      _ordersSubscription?.cancel();
+      _assignedOrders.clear();
+
+      _ordersSubscription = _riderService.watchAssignedOrders().listen(
+        (orders) {
+          if (mounted) {
+            print('📋 [DEBUG] Orders received: ${orders.length}');
+            setState(() {
+              _assignedOrders.clear();
+              _assignedOrders.addAll(orders);
+            });
+          }
+        },
+        onError: (error) {
+          print('Error in orders subscription: $error');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Error loading orders: $error')),
+            );
+          }
+        },
+      );
+    } catch (e) {
+      debugPrint('Error in _setupOrdersSubscription: $e');
+    }
+  }
+
+  Future<void> _setCurrentUserId() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user != null) {
+        _riderService.setCurrentUserId(user.id);
+        debugPrint('Set current user ID: ${user.id}');
+      } else {
+        debugPrint('No authenticated user found!');
       }
     } catch (e) {
-      print('Error setting current user ID: $e');
+      debugPrint('Error setting current user ID: $e');
     }
   }
 
@@ -142,7 +208,9 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
         setState(() {
           _todayEarnings = (dashboardData?['today_earnings'] ?? 0).toDouble();
           _availableOrders = dashboardData?['available_orders'] ?? 0;
-          _recentTransactions = List<Map<String, dynamic>>.from(dashboardData?['recent_transactions'] ?? []);
+          _recentTransactions = List<Map<String, dynamic>>.from(
+            dashboardData?['recent_transactions'] ?? [],
+          );
         });
       }
     } catch (e) {
@@ -153,7 +221,6 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
       }
     }
   }
-
 
   // Build assigned orders list with real-time updates
   Widget _buildAssignedOrders() {
@@ -166,36 +233,19 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
         ),
       );
     }
-    
+
     return _buildOrdersList(_assignedOrders);
   }
 
-  Widget _buildErrorCard(String error) {
+  Widget _buildStatusContainer({Widget? child, String? message}) {
     return Card(
       elevation: 4,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.all(Radius.circular(15)),
       ),
-      child: const Padding(
-        padding: EdgeInsets.all(16.0),
-        child: Center(
-          child: CircularProgressIndicator(),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLoadingCard() {
-    return const Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.all(Radius.circular(15)),
-      ),
       child: Padding(
-        padding: EdgeInsets.all(16.0),
-        child: Center(
-          child: CircularProgressIndicator(),
-        ),
+        padding: const EdgeInsets.all(16.0),
+        child: Center(child: child ?? Text(message ?? '')),
       ),
     );
   }
@@ -213,10 +263,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
           children: [
             const Text(
               'Assigned Orders',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
             orders.isEmpty
@@ -253,7 +300,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
       // If going online, check location permissions first
       if (value) {
         final permission = await Geolocator.checkPermission();
-        if (permission == LocationPermission.denied || 
+        if (permission == LocationPermission.denied ||
             permission == LocationPermission.deniedForever) {
           // Show permission request dialog
           final shouldRequest = await _showLocationPermissionDialog();
@@ -265,26 +312,35 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
       }
 
       final result = await _locationService.setOnlineStatus(value);
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(result['message'] ?? (result['success'] ? 'Status updated' : 'Failed to update status')),
-            backgroundColor: result['success'] == true ? Colors.green : Colors.red,
+            content: Text(
+              result['message'] ??
+                  (result['success']
+                      ? 'Status updated'
+                      : 'Failed to update status'),
+            ),
+            backgroundColor: result['success'] == true
+                ? Colors.green
+                : Colors.red,
           ),
         );
 
         setState(() {
           _isOnline = result['success'] == true ? value : _isOnline;
-          _isLocationTracking = result['success'] == true ? value : _isLocationTracking;
+          _isLocationTracking = result['success'] == true
+              ? value
+              : _isLocationTracking;
           _isLoading = false;
         });
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${e.toString()}')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: ${e.toString()}')));
         setState(() => _isLoading = false);
       }
     }
@@ -292,28 +348,29 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
 
   Future<bool> _showLocationPermissionDialog() async {
     return await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Location Permission Required'),
-          content: const Text(
-            'To go online and receive delivery requests, this app needs access to your location. '
-            'Please grant location permission to continue.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Grant Permission'),
-            ),
-          ],
-        );
-      },
-    ) ?? false;
+          context: context,
+          barrierDismissible: false,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: const Text('Location Permission Required'),
+              content: const Text(
+                'To go online and receive delivery requests, this app needs access to your location. '
+                'Please grant location permission to continue.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text('Grant Permission'),
+                ),
+              ],
+            );
+          },
+        ) ??
+        false;
   }
 
   // Build the dashboard body
@@ -350,9 +407,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
   Widget _buildHeaderCard() {
     return Card(
       elevation: 4,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(15),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -410,10 +465,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
                 children: [
                   const Text(
                     'Today\'s Earnings',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey,
-                    ),
+                    style: TextStyle(fontSize: 14, color: Colors.grey),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -437,9 +489,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
   Widget _buildStatusCard() {
     return Card(
       elevation: 4,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(15),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -447,10 +497,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
           children: [
             const Text(
               'Delivery Status',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
             Row(
@@ -468,11 +515,10 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      _isOnline ? 'Ready to accept orders' : 'Not available for delivery',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Colors.green,
-                      ),
+                      _isOnline
+                          ? 'Ready to accept orders'
+                          : 'Not available for delivery',
+                      style: const TextStyle(fontSize: 14, color: Colors.green),
                     ),
                   ],
                 ),
@@ -483,7 +529,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
                 ),
               ],
             ),
-            if (_isLocationTracking) ...[  
+            if (_isLocationTracking) ...[
               const SizedBox(height: 12),
               const Row(
                 children: [
@@ -491,10 +537,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
                   SizedBox(width: 4),
                   Text(
                     'Location tracking active',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.green,
-                    ),
+                    style: TextStyle(fontSize: 14, color: Colors.green),
                   ),
                 ],
               ),
@@ -512,22 +555,11 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
       children: [
         const Text(
           'Quick Actions',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 12),
         Row(
           children: [
-            Expanded(
-              child: _buildActionButton(
-                icon: Icons.delivery_dining,
-                label: 'Available Orders',
-                onTap: _showAvailableOrders,
-              ),
-            ),
-            const SizedBox(width: 12),
             Expanded(
               child: _buildActionButton(
                 icon: Icons.history,
@@ -591,10 +623,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
       children: [
         const Text(
           'Recent Transactions',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 12),
         if (_recentTransactions.isEmpty)
@@ -605,7 +634,9 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
             ),
           )
         else
-          ..._recentTransactions.map((transaction) => _buildTransactionCard(transaction)),
+          ..._recentTransactions.map(
+            (transaction) => _buildTransactionCard(transaction),
+          ),
       ],
     );
   }
@@ -615,9 +646,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: Container(
@@ -647,63 +676,24 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
     );
   }
 
-  // Show available orders
-  Future<void> _showAvailableOrders() async {
-    try {
-      final orders = await _riderService.getAvailableOrders();
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Available Orders'),
-            content: SizedBox(
-              width: double.maxFinite,
-              height: 400,
-              child: orders.isEmpty
-                  ? const Center(
-                      child: Text(
-                        'No available orders',
-                        style: TextStyle(fontSize: 16, color: Colors.grey),
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: orders.length,
-                      itemBuilder: (context, index) {
-                        final order = orders[index];
-                        return _buildOrderCard(order);
-                      },
-                    ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Close'),
-              ),
-            ],
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading orders: $e')),
-        );
-      }
-    }
-  }
-
   Widget _buildOrderCard(Map<String, dynamic> order) {
     final customer = order['customers'] as Map<String, dynamic>? ?? {};
     final merchant = order['merchants'] as Map<String, dynamic>? ?? {};
     final orderItems = order['order_items'] as List<dynamic>? ?? [];
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 2))],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -713,19 +703,35 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
             children: [
               Text(
                 'Order #${order['id'].toString().substring(0, 8)}',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               Text(
                 '\$${order['total_amount'].toStringAsFixed(2)}',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppConstants.primaryColor),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppConstants.primaryColor,
+                ),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          Text('From: ${merchant['name'] ?? 'Unknown Restaurant'}', style: const TextStyle(fontSize: 14)),
-          Text('To: ${customer['name'] ?? 'Customer'}', style: const TextStyle(fontSize: 14)),
+          Text(
+            'From: ${merchant['name'] ?? 'Unknown Restaurant'}',
+            style: const TextStyle(fontSize: 14),
+          ),
+          Text(
+            'To: ${customer['name'] ?? 'Customer'}',
+            style: const TextStyle(fontSize: 14),
+          ),
           const SizedBox(height: 8),
-          Text('Items: ${orderItems.length}', style: const TextStyle(fontSize: 14, color: Colors.grey)),
+          Text(
+            'Items: ${orderItems.length}',
+            style: const TextStyle(fontSize: 14, color: Colors.grey),
+          ),
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
@@ -735,7 +741,9 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
                 backgroundColor: AppConstants.primaryColor,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
               child: const Text('Accept Order'),
             ),
@@ -751,19 +759,31 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
       if (mounted) {
         if (success) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Order accepted successfully!'), backgroundColor: Colors.green),
+            const SnackBar(
+              content: Text('Order accepted successfully!'),
+              backgroundColor: Colors.green,
+            ),
           );
-          Navigator.pop(context, true); // Return true to indicate order was accepted
+          Navigator.pop(
+            context,
+            true,
+          ); // Return true to indicate order was accepted
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Failed to accept order'), backgroundColor: Colors.red),
+            const SnackBar(
+              content: Text('Failed to accept order'),
+              backgroundColor: Colors.red,
+            ),
           );
         }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error accepting order'), backgroundColor: Colors.red),
+          const SnackBar(
+            content: Text('Error accepting order'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -781,4 +801,4 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
       body: _buildDashboardBody(),
     );
   }
-} 
+}
