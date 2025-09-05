@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'delivery_screen.dart';
 import '../../services/rider_location_service.dart';
 import '../../services/rider_service.dart';
 import '../../core/constants/app_constants.dart';
@@ -16,7 +18,8 @@ class RiderDashboardScreen extends StatefulWidget {
   State<RiderDashboardScreen> createState() => _RiderDashboardScreenState();
 }
 
-class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
+class _RiderDashboardScreenState extends State<RiderDashboardScreen>
+    with WidgetsBindingObserver {
   final RiderLocationService _locationService = RiderLocationService();
   final RiderService _riderService = RiderService();
 
@@ -39,19 +42,33 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
   void initState() {
     super.initState();
     _initializeDashboard();
+    // Add a listener to handle when the app returns to the foreground
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadRiderStatus();
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // When the app comes back to the foreground, refresh the status
+      _loadRiderStatus();
+    }
   }
 
   Future<void> _initializeDashboard() async {
     try {
       setState(() => _isLoading = true);
-      
+
       // Use the provided userId from the constructor
       final userId = widget.userId;
       if (userId == null || userId.isEmpty) {
         debugPrint('No user ID provided to RiderDashboardScreen');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Authentication error. Please log in again.')),
+            const SnackBar(
+              content: Text('Authentication error. Please log in again.'),
+            ),
           );
           Navigator.of(context).pop(); // Go back to login
         }
@@ -85,7 +102,9 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
       debugPrint('Error initializing dashboard: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error initializing dashboard: ${e.toString()}')),
+          SnackBar(
+            content: Text('Error initializing dashboard: ${e.toString()}'),
+          ),
         );
       }
     } finally {
@@ -99,7 +118,28 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
   void dispose() {
     _locationSubscription?.cancel();
     _ordersSubscription?.cancel();
+    // Remove the lifecycle observer when the widget is disposed
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  // Add this method to load the rider's current status
+  Future<void> _loadRiderStatus() async {
+    try {
+      final riderData = await _riderService.getRiderProfile();
+      if (mounted && riderData != null) {
+        final isOnline = riderData['is_online'] ?? false;
+        // Only update if the status has changed to avoid unnecessary rebuilds
+        if (_isOnline != isOnline) {
+          setState(() {
+            _isOnline = isOnline;
+            _isLocationTracking = isOnline;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading rider status: $e');
+    }
   }
 
   void _setupOrdersSubscription() async {
@@ -109,7 +149,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
         debugPrint('Cannot set up subscription: No user ID available');
         return;
       }
-      
+
       final profile = await _riderService.getRiderProfile(userId: userId);
       if (profile == null) {
         debugPrint('Error: Could not load rider profile');
@@ -121,34 +161,46 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
         return;
       }
 
-      final profileId = profile['id'];
-      debugPrint('Setting up orders subscription for profile: $profileId');
-
-      print(
-        '🔄 [DEBUG] Setting up orders subscription for profile: $profileId',
-      );
       _ordersSubscription?.cancel();
-      _assignedOrders.clear();
 
+      // Set up a new subscription to watch for assigned orders with status 'ready'
       _ordersSubscription = _riderService.watchAssignedOrders().listen(
         (orders) {
           if (mounted) {
-            print('📋 [DEBUG] Orders received: ${orders.length}');
             setState(() {
               _assignedOrders.clear();
               _assignedOrders.addAll(orders);
+              _availableOrders = orders.length;
             });
           }
         },
         onError: (error) {
-          print('Error in orders subscription: $error');
+          debugPrint('Error in orders subscription: $error');
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Error loading orders: $error')),
+              const SnackBar(
+                content: Text('Error loading orders. Please try again.'),
+                backgroundColor: Colors.red,
+              ),
             );
           }
         },
       );
+
+      // Also watch for active deliveries
+      _riderService.watchActiveDelivery().listen((order) async {
+        if (order != null && mounted) {
+          // If there's an active delivery, navigate to delivery screen
+          await Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) =>
+                  DeliveryScreen(order: order, wasOnline: _isOnline),
+            ),
+          );
+          // When returning from delivery screen, refresh the dashboard
+          _loadDashboardData();
+        }
+      });
     } catch (e) {
       debugPrint('Error in _setupOrdersSubscription: $e');
     }
@@ -292,55 +344,161 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
     );
   }
 
-  Future<void> _toggleOnlineStatus(bool value) async {
-    if (_isOnline == value) return;
+  Future<bool> _checkLocationPermission() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      final shouldEnable = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Location Services Disabled'),
+          content: const Text('Please enable location services to go online.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Open Settings'),
+            ),
+          ],
+        ),
+      );
+
+      if (shouldEnable == true) {
+        await Geolocator.openLocationSettings();
+      }
+      return false;
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Location permissions are required to go online'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return false;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      if (mounted) {
+        final openSettings = await showDialog<bool>(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: const Text('Location Permissions Required'),
+              content: const Text(
+                'Location permissions are permanently denied. Please enable them in app settings.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Open Settings'),
+                ),
+              ],
+            );
+          },
+        );
+
+        if (openSettings == true) {
+          await Geolocator.openAppSettings();
+        }
+      }
+      return false;
+    }
+
+    return true;
+  }
+
+  Future<void> _toggleOnlineStatus(bool value, {bool force = false}) async {
+    if (!force && _isOnline == value) return;
+
+    if (!mounted) return;
+
+    // If trying to go online, check location permissions first
+    if (value) {
+      bool hasPermission = await _checkLocationPermission();
+      if (!hasPermission) {
+        // If permission was denied, don't proceed with going online
+        setState(() => _isLoading = false);
+        return;
+      }
+    }
+
     setState(() => _isLoading = true);
 
     try {
-      // If going online, check location permissions first
-      if (value) {
-        final permission = await Geolocator.checkPermission();
-        if (permission == LocationPermission.denied ||
-            permission == LocationPermission.deniedForever) {
-          // Show permission request dialog
-          final shouldRequest = await _showLocationPermissionDialog();
-          if (!shouldRequest) {
-            setState(() => _isLoading = false);
-            return;
-          }
+      // First, ensure we have a valid user ID
+      final userId = _riderService.currentUserId;
+      if (userId == null || userId.isEmpty) {
+        debugPrint('No user ID available');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Authentication error. Please log in again.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          Navigator.of(context).pop(); // Go back to login
         }
+        return;
       }
 
+      // Update the online status in the backend
       final result = await _locationService.setOnlineStatus(value);
+      final success = result['success'] == true;
 
+      if (mounted) {
+        if (!success) {
+          final errorMessage = result['error'] ?? 'Failed to update status';
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorMessage.toString()),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+
+        // Update the UI state
+        setState(() {
+          _isOnline = success ? value : _isOnline;
+          _isLocationTracking = success ? value : _isLocationTracking;
+          _isLoading = false;
+        });
+
+        // If going online, ensure location tracking starts
+        if (success && value) {
+          try {
+            await _locationService.startLocationTracking();
+          } catch (e) {
+            debugPrint('Error starting location tracking: $e');
+            // Don't show error to user, just log it
+          }
+        } else if (success && !value) {
+          // If going offline, stop location tracking
+          await _locationService.stopLocationTracking();
+        }
+      }
+    } catch (e) {
+      debugPrint('Error in _toggleOnlineStatus: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              result['message'] ??
-                  (result['success']
-                      ? 'Status updated'
-                      : 'Failed to update status'),
-            ),
-            backgroundColor: result['success'] == true
-                ? Colors.green
-                : Colors.red,
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
           ),
         );
-
-        setState(() {
-          _isOnline = result['success'] == true ? value : _isOnline;
-          _isLocationTracking = result['success'] == true
-              ? value
-              : _isLocationTracking;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error: ${e.toString()}')));
         setState(() => _isLoading = false);
       }
     }
@@ -677,114 +835,180 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen> {
   }
 
   Widget _buildOrderCard(Map<String, dynamic> order) {
-    final customer = order['customers'] as Map<String, dynamic>? ?? {};
-    final merchant = order['merchants'] as Map<String, dynamic>? ?? {};
-    final orderItems = order['order_items'] as List<dynamic>? ?? [];
+    final customer = order['users'] ?? {};
+    final merchant = order['merchants'] ?? {};
+    final orderItems = order['order_items'] ?? [];
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Order #${order['id'].toString().substring(0, 8)}',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16.0),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Order #${order['id']}'.substring(0, 8).toUpperCase(),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
                 ),
-              ),
-              Text(
-                '\$${order['total_amount'].toStringAsFixed(2)}',
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: AppConstants.primaryColor,
+                Text(
+                  '\$${order['total_amount']?.toStringAsFixed(2) ?? '0.00'}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green,
+                    fontSize: 16,
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'From: ${merchant['name'] ?? 'Unknown Restaurant'}',
-            style: const TextStyle(fontSize: 14),
-          ),
-          Text(
-            'To: ${customer['name'] ?? 'Customer'}',
-            style: const TextStyle(fontSize: 14),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Items: ${orderItems.length}',
-            style: const TextStyle(fontSize: 14, color: Colors.grey),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () => _acceptOrder(order['id']),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppConstants.primaryColor,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              child: const Text('Accept Order'),
+              ],
             ),
-          ),
-        ],
+            const SizedBox(height: 8),
+            Text(
+              'From: ${merchant['name'] ?? 'Unknown Restaurant'}',
+              style: const TextStyle(color: Colors.grey),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'To: ${customer['name'] ?? 'Customer'} (${customer['phone'] ?? 'No phone'})',
+              style: const TextStyle(color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _isOnline ? () => _acceptOrder(order) : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _isOnline
+                      ? AppConstants.primaryColor
+                      : Colors.grey,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                child: Text(
+                  _isOnline ? 'Accept Order' : 'Go Online to Accept Orders',
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Future<void> _acceptOrder(String orderId) async {
+  // Helper method to calculate order total from order items
+  double _calculateOrderTotal(Map<String, dynamic> order) {
+    double total = 0.0;
+    if (order['order_items'] != null && order['order_items'] is List) {
+      for (var item in order['order_items']) {
+        final food = item['foods'] ?? {};
+        final price = (food['price'] ?? 0).toDouble();
+        final quantity = (item['quantity'] ?? 1).toInt();
+        total += price * quantity;
+      }
+    }
+    return total;
+  }
+
+  Future<void> _acceptOrder(Map<String, dynamic> order) async {
     try {
-      final success = await _riderService.acceptOrder(orderId);
-      if (mounted) {
-        if (success) {
+      setState(() => _isLoading = true);
+
+      // Show confirmation dialog
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Accept Order'),
+          content: const Text('Do you want to accept and mark this order as picked up?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Accept & Pick Up'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirm != true) {
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      // Call the service to accept and mark the order as picked up
+      final success = await _riderService.acceptAndPickUpOrder(order['id']);
+
+      if (success && mounted) {
+        // Create a copy of the order with updated status
+        final updatedOrder = Map<String, dynamic>.from(order);
+        updatedOrder['status'] = 'picked_up';
+        updatedOrder['picked_up_at'] = DateTime.now().toIso8601String();
+
+        // Update the UI
+        setState(() {
+          // Remove from assigned orders
+          _assignedOrders.removeWhere((o) => o['id'] == order['id']);
+          
+          // Add to recent transactions
+          _recentTransactions.insert(0, {
+            'id': order['id'],
+            'type': 'pickup',
+            'description': 'Order #${order['id']} - Picked Up',
+            'amount': _calculateOrderTotal(order),
+            'status': 'picked_up',
+            'date': DateTime.now().toIso8601String(),
+            'order': updatedOrder,
+          });
+          
+          _availableOrders = _assignedOrders.length;
+        });
+
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Order accepted successfully!'),
+              content: Text('Order picked up successfully!'),
               backgroundColor: Colors.green,
             ),
           );
-          Navigator.pop(
-            context,
-            true,
-          ); // Return true to indicate order was accepted
-        } else {
+
+          // Navigate to delivery screen
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => DeliveryScreen(order: updatedOrder, wasOnline: _isOnline),
+            ),
+          );
+
+          // Refresh dashboard data when returning from delivery
+          _loadDashboardData();
+        }
+      } else {
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Failed to accept order'),
+              content: Text('Failed to pick up order. Please try again.'),
               backgroundColor: Colors.red,
             ),
           );
         }
       }
     } catch (e) {
+      debugPrint('Error accepting order: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Error accepting order'),
+            content: Text('An error occurred. Please try again.'),
             backgroundColor: Colors.red,
           ),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
       }
     }
   }

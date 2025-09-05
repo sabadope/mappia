@@ -29,7 +29,7 @@ class RiderService {
     }
 
     debugPrint('🔍 Looking up rider profile for user ID: $effectiveUserId');
-    
+
     try {
       // First, check if the user exists and has the rider role
       final userResponse = await _supabase
@@ -37,14 +37,14 @@ class RiderService {
           .select()
           .eq('id', effectiveUserId)
           .maybeSingle();
-          
+
       if (userResponse == null) {
         debugPrint('❌ No user found with ID: $effectiveUserId');
         return null;
       }
-      
+
       debugPrint('👤 User found with role: ${userResponse['role']}');
-      
+
       // Then check for rider profile in the riders table
       debugPrint('🔍 Querying riders table for user_id: $effectiveUserId');
       final response = await _supabase
@@ -63,9 +63,11 @@ class RiderService {
             .from('rider_profiles')
             .select('*')
             .limit(1);
-        debugPrint('   Total rider profiles in database: ${allProfiles.length}');
+        debugPrint(
+          '   Total rider profiles in database: ${allProfiles.length}',
+        );
       }
-      
+
       return response;
     } catch (e) {
       debugPrint('❌ Error in getRiderProfile: $e');
@@ -130,7 +132,9 @@ class RiderService {
       }
 
       final riderId = riderProfile['id'];
-      debugPrint('🔄 Updating online status to $isOnline for rider ID: $riderId');
+      debugPrint(
+        '🔄 Updating online status to $isOnline for rider ID: $riderId',
+      );
 
       await _supabase
           .from('riders')
@@ -169,12 +173,136 @@ class RiderService {
     }
   }
 
+  /// Accept and mark order as picked up
+  Future<bool> acceptAndPickUpOrder(String orderId) async {
+    try {
+      final userId = _currentUserId ?? _supabase.auth.currentUser?.id;
+      if (userId == null) {
+        debugPrint('❌ Error: No user ID available');
+        return false;
+      }
+
+      // Get rider profile
+      final riderProfile = await getRiderProfile(userId: userId);
+      if (riderProfile == null) {
+        debugPrint('❌ Error: Rider profile not found');
+        return false;
+      }
+
+      final riderId = riderProfile['id'];
+
+      // Update order status to 'picked_up' and assign rider
+      final updateResponse = await _supabase
+          .from('orders')
+          .update({
+            'status': 'picked_up',
+            'rider_id': riderId,
+            'assigned_at': DateTime.now().toIso8601String(),
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', orderId)
+          .eq('status', 'ready') // Only update if still ready
+          .select();
+
+      if (updateResponse.isEmpty) {
+        debugPrint('❌ No order found with status "ready" and ID: $orderId');
+        return false;
+      }
+
+      // Update rider's availability
+      await _supabase
+          .from('riders')
+          .update({
+            'is_available': false,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', riderId);
+
+      return true;
+    } catch (e) {
+      debugPrint('❌ Error accepting order: $e');
+      if (e is PostgrestException) {
+        debugPrint('   Postgrest error details: ${e.details}');
+      }
+      rethrow;
+    }
+  }
+
+  /// Mark order as on the way
+  Future<bool> markOnTheWay(String orderId) async {
+    try {
+      final userId = _currentUserId ?? _supabase.auth.currentUser?.id;
+      if (userId == null) {
+        debugPrint('❌ Error: No user ID available');
+        return false;
+      }
+
+      // Get rider profile
+      final riderProfile = await getRiderProfile(userId: userId);
+      if (riderProfile == null) {
+        debugPrint('❌ Error: Rider profile not found');
+        return false;
+      }
+
+      final riderId = riderProfile['id'];
+
+      // Update order status to 'on_the_way'
+      await _supabase
+          .from('orders')
+          .update({
+            'status': 'on_the_way',
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', orderId)
+          .eq('rider_id', riderId) // Only update if assigned to this rider
+          .eq('status', 'picked_up'); // Only update if currently picked up
+
+      return true;
+    } catch (e) {
+      debugPrint('❌ Error updating to on the way: $e');
+      if (e is PostgrestException) {
+        debugPrint('   Postgrest error details: ${e.details}');
+      }
+      rethrow;
+    }
+  }
+
+  /// Watch for active delivery (picked_up or on_the_way)
+  Stream<Map<String, dynamic>?> watchActiveDelivery() {
+    final userId = _currentUserId ?? _supabase.auth.currentUser?.id;
+    if (userId == null) {
+      debugPrint('❌ Error: No user ID available');
+      return Stream.value(null);
+    }
+
+    // For streams, we need to filter in the map function
+    return _supabase
+        .from('orders')
+        .stream(primaryKey: ['id'])
+        .eq('rider_id', userId)
+        .map((data) {
+          // Filter for active statuses in the map function
+          final activeOrders = (data as List)
+              .where(
+                (order) =>
+                    ['picked_up', 'on_the_way'].contains(order['status']),
+              )
+              .toList();
+
+          // Return the first active order or null if none
+          if (activeOrders.isEmpty) return null;
+          return Map<String, dynamic>.from(activeOrders.first);
+        });
+  }
+
   /// Completes an order and makes the rider available again
   /// Returns true if successful, false otherwise
   Future<bool> completeOrder(String orderId) async {
     try {
-      debugPrint('🔄 [completeOrder] Starting order completion for order: $orderId');
-      
+      debugPrint(
+        '🔄 [completeOrder] Starting order completion for order: $orderId',
+      );
+
       final userId = currentUserId;
       if (userId == null) {
         debugPrint('❌ [completeOrder] Error: No user ID available');
@@ -189,7 +317,7 @@ class RiderService {
       }
 
       final riderId = riderProfile['id'];
-      
+
       // Update order status to 'delivered'
       await _supabase
           .from('orders')
@@ -201,15 +329,17 @@ class RiderService {
           .eq('id', orderId);
 
       debugPrint('✅ [completeOrder] Successfully marked order as delivered');
-      
+
       // Make rider available for new orders
       final success = await updateRiderAvailability(riderId, true);
       if (!success) {
         debugPrint('⚠️ [completeOrder] Failed to update rider availability');
         // Continue anyway as the order is already marked as delivered
       }
-      
-      debugPrint('✅ [completeOrder] Successfully completed order and updated rider status');
+
+      debugPrint(
+        '✅ [completeOrder] Successfully completed order and updated rider status',
+      );
       return true;
     } catch (e) {
       debugPrint('❌ [completeOrder] Error: $e');
@@ -228,11 +358,15 @@ class RiderService {
             'updated_at': DateTime.now().toIso8601String(),
           })
           .eq('id', riderId);
-      
-      debugPrint('✅ [updateRiderAvailability] Rider $riderId availability updated to: $isAvailable');
+
+      debugPrint(
+        '✅ [updateRiderAvailability] Rider $riderId availability updated to: $isAvailable',
+      );
       return true;
     } catch (e) {
-      debugPrint('❌ [updateRiderAvailability] Error updating rider availability: $e');
+      debugPrint(
+        '❌ [updateRiderAvailability] Error updating rider availability: $e',
+      );
       return false;
     }
   }
@@ -240,8 +374,10 @@ class RiderService {
   // Accept an order
   Future<bool> acceptOrder(String orderId) async {
     try {
-      debugPrint('🔄 [acceptOrder] Starting order acceptance for order: $orderId');
-      
+      debugPrint(
+        '🔄 [acceptOrder] Starting order acceptance for order: $orderId',
+      );
+
       final userId = currentUserId;
       if (userId == null) {
         debugPrint('❌ [acceptOrder] Error: No user ID available');
@@ -251,7 +387,9 @@ class RiderService {
       debugPrint('🔍 [acceptOrder] Getting rider profile for user ID: $userId');
       final riderProfile = await getRiderProfile(userId: userId);
       if (riderProfile == null) {
-        debugPrint('❌ [acceptOrder] Error: No rider profile found for user ID: $userId');
+        debugPrint(
+          '❌ [acceptOrder] Error: No rider profile found for user ID: $userId',
+        );
         return false;
       }
 
@@ -267,16 +405,23 @@ class RiderService {
             .eq('id', orderId)
             .single();
 
-        debugPrint('📋 [acceptOrder] Current order status: ${orderCheck['status']}');
-        debugPrint('📋 [acceptOrder] Current rider_id: ${orderCheck['rider_id']}');
+        debugPrint(
+          '📋 [acceptOrder] Current order status: ${orderCheck['status']}',
+        );
+        debugPrint(
+          '📋 [acceptOrder] Current rider_id: ${orderCheck['rider_id']}',
+        );
 
-        if (orderCheck['rider_id'] != null && orderCheck['rider_id'] != riderId) {
-          debugPrint('❌ [acceptOrder] Error: Order $orderId is already assigned to another rider');
+        if (orderCheck['rider_id'] != null &&
+            orderCheck['rider_id'] != riderId) {
+          debugPrint(
+            '❌ [acceptOrder] Error: Order $orderId is already assigned to another rider',
+          );
           return false;
         }
 
         debugPrint('🔄 [acceptOrder] Updating order status to "picked_up"...');
-        
+
         // Update order status to 'picked_up' and assign to rider
         final updateResponse = await _supabase
             .from('orders')
@@ -298,8 +443,10 @@ class RiderService {
           debugPrint('❌ [acceptOrder] Failed to update rider availability');
           return false;
         }
-        
-        debugPrint('✅ [acceptOrder] Successfully accepted order and updated rider status');
+
+        debugPrint(
+          '✅ [acceptOrder] Successfully accepted order and updated rider status',
+        );
         return true;
       } on PostgrestException catch (e) {
         debugPrint('❌ [acceptOrder] Database error: ${e.message}');
@@ -321,48 +468,102 @@ class RiderService {
     }
   }
 
-  // Complete delivery
-  Future<bool> completeDelivery(String orderId, double tipAmount) async {
+  // Complete delivery with optional tip amount
+  Future<bool> completeDelivery(
+    String orderId, [
+    double tipAmount = 0.0,
+  ]) async {
     try {
       final userId = currentUserId;
-      if (userId == null) return false;
+      if (userId == null) {
+        debugPrint('❌ Error: No user ID available. User must be logged in.');
+        return false;
+      }
 
       final riderProfile = await getRiderProfile();
-      if (riderProfile == null) return false;
+      if (riderProfile == null) {
+        debugPrint(
+          '❌ Error: Rider profile not found. Make sure you have completed your rider profile.',
+        );
+        return false;
+      }
 
-      // Update order status
-      await _supabase
+      final riderId = riderProfile['id'];
+      debugPrint('🔁 Completing delivery for order: $orderId, rider: $riderId');
+
+      // First get the order details to ensure it's in a valid state
+      final orderResponse = await _supabase
+          .from('orders')
+          .select('id, status, rider_id, delivery_fee, total_amount')
+          .eq('id', orderId)
+          .maybeSingle();
+
+      if (orderResponse == null) {
+        debugPrint('❌ Order not found with ID: $orderId');
+        return false;
+      }
+
+      if (orderResponse['rider_id'] != riderId) {
+        debugPrint(
+          '❌ Order $orderId is assigned to rider ${orderResponse['rider_id']}, not current rider $riderId',
+        );
+        return false;
+      }
+
+      final currentStatus = orderResponse['status'];
+      if (currentStatus != 'on_the_way' && currentStatus != 'picked_up') {
+        debugPrint(
+          '❌ Cannot complete order with status: $currentStatus. Order must be either "on_the_way" or "picked_up"',
+        );
+        return false;
+      }
+
+      // Update order status to completed
+      final updateResponse = await _supabase
           .from('orders')
           .update({
-            'status': 'delivered',
+            'status': 'completed',
             'tip_amount': tipAmount,
+            'delivered_at': DateTime.now().toIso8601String(),
             'updated_at': DateTime.now().toIso8601String(),
           })
           .eq('id', orderId)
-          .eq('rider_id', riderProfile['id']);
+          .eq('rider_id', riderId);
 
-      // Update rider status to available
+      if (updateResponse.error != null) {
+        debugPrint(
+          '❌ Database error updating order status: ${updateResponse.error}',
+        );
+        return false;
+      }
+
+      if (updateResponse.data == null || updateResponse.data.isEmpty) {
+        debugPrint(
+          '❌ No rows were updated. Order $orderId may not exist or rider ID mismatch.',
+        );
+        return false;
+      }
+
+      debugPrint('✅ Order marked as completed');
+
+      // Update rider availability
       await _supabase
           .from('riders')
           .update({
-            'status': 'available',
+            'is_available': true,
             'updated_at': DateTime.now().toIso8601String(),
           })
-          .eq('id', riderProfile['id']);
+          .eq('id', riderId);
 
-      // Calculate earnings
-      final orderResponse = await _supabase
-          .from('orders')
-          .select('delivery_fee, total_amount')
-          .eq('id', orderId)
-          .single();
+      debugPrint('✅ Rider marked as available');
 
+      // Calculate earnings - use the orderResponse we already have
       final baseEarnings = orderResponse['delivery_fee'] ?? 5.0;
       final totalEarnings = baseEarnings + tipAmount;
 
       // Record earnings
       await _supabase.from('rider_earnings').insert({
-        'rider_id': riderProfile['id'],
+        'rider_id': riderId,
         'order_id': orderId,
         'base_earnings': baseEarnings,
         'tip_amount': tipAmount,
@@ -377,9 +578,10 @@ class RiderService {
             'total_deliveries': (riderProfile['total_deliveries'] ?? 0) + 1,
             'total_earnings':
                 (riderProfile['total_earnings'] ?? 0) + totalEarnings,
+            'is_available': true, // Make sure rider is marked as available
             'updated_at': DateTime.now().toIso8601String(),
           })
-          .eq('id', riderProfile['id']);
+          .eq('id', riderId);
 
       return true;
     } catch (e) {
@@ -494,19 +696,21 @@ class RiderService {
     final controller = StreamController<List<Map<String, dynamic>>>.broadcast();
 
     // Initial fetch
-    _fetchAssignedOrders(userId).then((orders) {
-      debugPrint('📥 Initial orders fetched: ${orders.length}');
-      if (!controller.isClosed) {
-        controller.add(orders);
-      } else {
-        debugPrint('⚠️ Controller closed before initial fetch completed');
-      }
-    }).catchError((error) {
-      debugPrint('❌ Error in initial fetch: $error');
-      if (!controller.isClosed) {
-        controller.addError(error);
-      }
-    });
+    _fetchAssignedOrders(userId)
+        .then((orders) {
+          debugPrint('📥 Initial orders fetched: ${orders.length}');
+          if (!controller.isClosed) {
+            controller.add(orders);
+          } else {
+            debugPrint('⚠️ Controller closed before initial fetch completed');
+          }
+        })
+        .catchError((error) {
+          debugPrint('❌ Error in initial fetch: $error');
+          if (!controller.isClosed) {
+            controller.addError(error);
+          }
+        });
 
     final channel = _supabase.channel('rider_$userId');
 
@@ -556,20 +760,22 @@ class RiderService {
     );
 
     // Handle channel status changes
-    channel.onPostgresChanges(
-      event: PostgresChangeEvent.all,
-      schema: 'public',
-      table: 'orders',
-      callback: (payload) {
-        debugPrint('🔌 Order change received: $payload');
-        // Refresh orders when changes are detected
-        _fetchAssignedOrders(userId).then((orders) {
-          if (!controller.isClosed) {
-            controller.add(orders);
-          }
-        });
-      },
-    ).subscribe();
+    channel
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'orders',
+          callback: (payload) {
+            debugPrint('🔌 Order change received: $payload');
+            // Refresh orders when changes are detected
+            _fetchAssignedOrders(userId).then((orders) {
+              if (!controller.isClosed) {
+                controller.add(orders);
+              }
+            });
+          },
+        )
+        .subscribe();
 
     // Cleanup
     controller.onCancel = () {
@@ -587,18 +793,22 @@ class RiderService {
   // Helper method to fetch assigned orders
   Future<List<Map<String, dynamic>>> _fetchAssignedOrders(String userId) async {
     try {
-      debugPrint('🔍 [RiderService] Fetching active orders for rider ID: $userId');
-      
+      debugPrint(
+        '🔍 [RiderService] Fetching active orders for rider ID: $userId',
+      );
+
       // First get the rider profile to get the rider's ID in the riders table
       final riderProfile = await getRiderProfile(userId: userId);
       if (riderProfile == null) {
-        debugPrint('❌ [RiderService] No rider profile found for user ID: $userId');
+        debugPrint(
+          '❌ [RiderService] No rider profile found for user ID: $userId',
+        );
         return [];
       }
-      
+
       final riderId = riderProfile['id'];
       debugPrint('🔍 [RiderService] Found rider ID in database: $riderId');
-      
+
       // Get all active orders assigned to this rider (any status except 'completed')
       final response = await _supabase
           .from('orders')
@@ -612,11 +822,15 @@ class RiderService {
           .neq('status', 'completed')
           .order('created_at', ascending: false);
 
-      debugPrint('✅ [RiderService] Found ${response.length} active orders for rider $userId');
+      debugPrint(
+        '✅ [RiderService] Found ${response.length} active orders for rider $userId',
+      );
       if (response.isNotEmpty) {
         debugPrint('📋 [RiderService] First order details: ${response.first}');
       } else {
-        debugPrint('ℹ️ [RiderService] No active orders found for rider $userId');
+        debugPrint(
+          'ℹ️ [RiderService] No active orders found for rider $userId',
+        );
       }
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
@@ -646,14 +860,18 @@ class RiderService {
 
       // Get dashboard data using the database function
       final response = await _supabase
-          .rpc('get_rider_dashboard_data', params: {
-            'rider_user_id': riderProfile['user_id'],
-            'target_date': today,
-          })
+          .rpc(
+            'get_rider_dashboard_data',
+            params: {
+              'rider_user_id': riderProfile['user_id'],
+              'target_date': today,
+            },
+          )
           .single();
 
       return {
-        'today_earnings': (response['today_earnings'] as num?)?.toDouble() ?? 0.0,
+        'today_earnings':
+            (response['today_earnings'] as num?)?.toDouble() ?? 0.0,
         'total_orders': response['total_orders'] ?? 0,
         'available_orders': response['available_orders'] ?? 0,
         'rider_level': response['rider_level'] ?? 1,
