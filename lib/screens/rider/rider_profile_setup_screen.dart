@@ -17,7 +17,7 @@ class _RiderProfileSetupScreenState extends State<RiderProfileSetupScreen> {
   final _vehicleNumberController = TextEditingController();
   final _licenseNumberController = TextEditingController();
   final RiderService _riderService = RiderService();
-  
+
   bool _isLoading = false;
 
   @override
@@ -96,7 +96,7 @@ class _RiderProfileSetupScreenState extends State<RiderProfileSetupScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 20),
-              
+
               // Welcome message
               Container(
                 padding: const EdgeInsets.all(20),
@@ -138,9 +138,9 @@ class _RiderProfileSetupScreenState extends State<RiderProfileSetupScreen> {
                   ],
                 ),
               ),
-              
+
               const SizedBox(height: 32),
-              
+
               // Vehicle Type
               const Text(
                 'Vehicle Type *',
@@ -178,9 +178,9 @@ class _RiderProfileSetupScreenState extends State<RiderProfileSetupScreen> {
                   return null;
                 },
               ),
-              
+
               const SizedBox(height: 20),
-              
+
               // Vehicle Number (Optional)
               const Text(
                 'Vehicle Number (Optional)',
@@ -212,9 +212,9 @@ class _RiderProfileSetupScreenState extends State<RiderProfileSetupScreen> {
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                 ),
               ),
-              
+
               const SizedBox(height: 20),
-              
+
               // License Number (Optional)
               const Text(
                 'License Number (Optional)',
@@ -246,9 +246,9 @@ class _RiderProfileSetupScreenState extends State<RiderProfileSetupScreen> {
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                 ),
               ),
-              
+
               const SizedBox(height: 32),
-              
+
               // Submit Button
               SizedBox(
                 width: double.infinity,
@@ -265,25 +265,25 @@ class _RiderProfileSetupScreenState extends State<RiderProfileSetupScreen> {
                   ),
                   child: _isLoading
                       ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  )
                       : const Text(
-                          'Create Profile',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                    'Create Profile',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
               ),
-              
+
               const SizedBox(height: 20),
-              
+
               // Info text
               Container(
                 padding: const EdgeInsets.all(16),
@@ -318,4 +318,4 @@ class _RiderProfileSetupScreenState extends State<RiderProfileSetupScreen> {
       ),
     );
   }
-} 
+}

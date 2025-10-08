@@ -21,32 +21,32 @@ class RiderAssignmentService {
       double latitude, double longitude) async {
     try {
       debugPrint('Finding available riders near: $latitude, $longitude');
-      
+
       // Validate input coordinates
       if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
         debugPrint('Invalid coordinates provided: $latitude, $longitude');
         return [];
       }
-      
+
       // Try to find riders using the PostGIS spatial query
       final riders = await _findAvailableRiders(latitude, longitude);
-      
+
       // Log the result
       if (riders.isEmpty) {
         debugPrint('No available riders found within ${_maxDistanceKm}km');
       } else {
         debugPrint('Found ${riders.length} available riders within ${_maxDistanceKm}km');
       }
-      
+
       return riders;
-      
+
     } catch (e) {
       debugPrint('Error in getAvailableRidersNearby: $e');
       // In production, you might want to log this error to a monitoring service
       return [];
     }
   }
-  
+
   // Assign a specific rider to an order
   Future<bool> assignSpecificRiderToOrder(String orderId, String riderId) async {
     return await _assignOrderToRider(orderId, riderId);
@@ -56,40 +56,40 @@ class RiderAssignmentService {
   Future<List<Map<String, dynamic>>> _findAvailableRiders(double latitude, double longitude) async {
     try {
       debugPrint('Searching for riders near: $latitude, $longitude');
-      
+
       // Format the restaurant's location as a PostGIS point (SRID=4326;POINT(longitude latitude))
       final restaurantPoint = 'SRID=4326;POINT($longitude $latitude)';
-      
+
       // Call the PostGIS function to find nearby riders
       final response = await _supabase.rpc('find_nearby_riders', params: {
         'p_restaurant_point': restaurantPoint,
         'p_max_distance': _maxDistanceKm * 1000, // Convert km to meters
         'p_limit': 20 // Increased limit to ensure we get enough riders after filtering
       });
-      
+
       if (response == null) {
         debugPrint('No riders found in the database');
         return [];
       }
-      
+
       final ridersList = response as List;
       debugPrint('Found ${ridersList.length} riders from database');
-      
+
       // Process and validate riders
       final availableRiders = <Map<String, dynamic>>[];
-      
+
       for (final rider in ridersList) {
         try {
           // Extract location from the new format with separate lat/lng fields
           final lat = rider['latitude']?.toDouble();
           final lng = rider['longitude']?.toDouble();
-          
+
           // Skip if we couldn't get the location
           if (lat == null || lng == null) {
             debugPrint('Skipping rider ${rider['id']} - missing latitude or longitude');
             continue;
           }
-          
+
           // Calculate distance in meters
           final distanceInMeters = Geolocator.distanceBetween(
             latitude,
@@ -97,13 +97,13 @@ class RiderAssignmentService {
             lat,
             lng,
           );
-          
+
           // Skip if rider is too far (shouldn't happen due to PostGIS query, but good to double-check)
           if (distanceInMeters > (_maxDistanceKm * 1000)) {
             debugPrint('Skipping rider ${rider['id']} - too far away: ${distanceInMeters.toStringAsFixed(0)}m');
             continue;
           }
-          
+
           // Add rider to available riders
           availableRiders.add({
             'id': rider['id'],
@@ -117,21 +117,21 @@ class RiderAssignmentService {
             'vehicle_type': rider['vehicle_type']?.toString().toLowerCase() ?? 'bike',
             'is_online': rider['is_online'] ?? false,
           });
-          
+
           debugPrint('Added rider ${rider['id']} - ${distanceInMeters.toStringAsFixed(0)}m away');
-          
+
         } catch (e) {
           debugPrint('Error processing rider ${rider['id']}: $e');
         }
       }
-      
+
       // Sort by distance (nearest first)
       availableRiders.sort((a, b) {
         final distanceA = (a['distance'] as num).toDouble();
         final distanceB = (b['distance'] as num).toDouble();
         return distanceA.compareTo(distanceB);
       });
-      
+
       debugPrint('Found ${availableRiders.length} available riders with valid locations');
       return availableRiders;
     } catch (e) {
@@ -139,7 +139,7 @@ class RiderAssignmentService {
       return [];
     }
   }
-  
+
   /// Gets the restaurant's location from the users table
   /// Throws an exception if the location is not set
   /// Updates the restaurant's location in the database
@@ -153,7 +153,7 @@ class RiderAssignmentService {
     try {
       debugPrint('Updating restaurant location for user: $userId');
       final supabase = Supabase.instance.client;
-      
+
       // First, check if the user is authenticated
       final currentUser = supabase.auth.currentUser;
       if (currentUser == null || currentUser.id != userId) {
@@ -161,7 +161,7 @@ class RiderAssignmentService {
         debugPrint('Current user: ${currentUser?.id}, Requested user: $userId');
         return false;
       }
-      
+
       // Prepare the data to upsert
       final locationData = {
         'user_id': userId,
@@ -169,24 +169,24 @@ class RiderAssignmentService {
         'longitude': longitude,
         'updated_at': DateTime.now().toIso8601String(),
       };
-      
+
       if (address != null) {
         locationData['address'] = address;
       }
-      
+
       debugPrint('Upserting location data: $locationData');
-      
+
       // First try to update existing restaurant location
       final response = await supabase
           .from('restaurant_locations')
           .upsert(
-            locationData,
-            onConflict: 'user_id'
-          );
-          
+          locationData,
+          onConflict: 'user_id'
+      );
+
       if (response.error != null) {
         debugPrint('Error updating restaurant location: ${response.error?.message}');
-        
+
         // If the error is about RLS, try to insert with the correct user context
         if (response.error?.message?.contains('row-level security') == true) {
           debugPrint('RLS violation detected, trying with RPC...');
@@ -197,7 +197,7 @@ class RiderAssignmentService {
             address: address,
           );
         }
-        
+
         return false;
       }
 
@@ -233,12 +233,12 @@ class RiderAssignmentService {
           throw Exception('Location permissions are required to find nearby riders. Please grant location permissions in app settings.');
         }
       }
-      
+
       if (permission == LocationPermission.deniedForever) {
         // Permissions are denied forever
         throw Exception(
-          'Location permissions are permanently denied. ' 
-          'Please enable location permissions for this app in your device settings to find nearby riders.'
+            'Location permissions are permanently denied. '
+                'Please enable location permissions for this app in your device settings to find nearby riders.'
         );
       }
 
@@ -257,7 +257,7 @@ class RiderAssignmentService {
   /// If not set, tries to get the current device location and save it
   Future<Position> getRestaurantLocation(String restaurantId) async {
     final supabase = Supabase.instance.client;
-    
+
     try {
       // First try to get the saved restaurant location from the database
       final response = await supabase
@@ -280,19 +280,19 @@ class RiderAssignmentService {
           headingAccuracy: 0,
         );
       }
-      
+
       // If no saved location, get current device location
       final position = await getCurrentLocation();
       debugPrint('Got current device location: ${position.latitude}, ${position.longitude}');
-      
+
       // Try to get address from coordinates
       String? address;
       try {
         final placemarks = await placemarkFromCoordinates(
-          position.latitude, 
-          position.longitude
+            position.latitude,
+            position.longitude
         ).timeout(const Duration(seconds: 5));
-        
+
         if (placemarks.isNotEmpty) {
           final place = placemarks.first;
           address = [
@@ -307,7 +307,7 @@ class RiderAssignmentService {
       } catch (e) {
         debugPrint('Error getting address from coordinates: $e');
       }
-      
+
       // Save the location to the database
       await updateRestaurantLocation(
         userId: restaurantId,
@@ -315,9 +315,9 @@ class RiderAssignmentService {
         longitude: position.longitude,
         address: address,
       );
-      
+
       return position;
-      
+
     } catch (e) {
       debugPrint('Error in getRestaurantLocation: $e');
       rethrow; // Re-throw the exception to be handled by the caller
@@ -331,60 +331,65 @@ class RiderAssignmentService {
         debugPrint('Invalid orderId or riderId');
         return false;
       }
-      
+
       debugPrint('Assigning order $orderId to rider $riderId');
-      
+
       // First, check if the order exists and is in the correct status
       final orderCheck = await _supabase
           .from('orders')
           .select('id, status, rider_id')
           .eq('id', orderId)
           .single();
-      
+
       debugPrint('Order check result: $orderCheck');
-      
+
       if (orderCheck == null) {
         debugPrint('Order not found: $orderId');
         return false;
       }
-      
+
       if (orderCheck['rider_id'] != null) {
         debugPrint('Order already has a rider assigned: ${orderCheck['rider_id']}');
         return false;
       }
-      
+
       if (orderCheck['status'] != 'ready' && orderCheck['status'] != 'preparing') {
         debugPrint('Order status is not ready for assignment: ${orderCheck['status']}');
         return false;
       }
-      
+
       // Also check if the rider exists and is online
       final riderCheck = await _supabase
           .from('riders')
           .select('id, is_online')
           .eq('id', riderId)
           .single();
-      
+
       debugPrint('Rider check result: $riderCheck');
-      
+
       if (riderCheck == null) {
         debugPrint('Rider not found: $riderId');
         return false;
       }
-      
+
       if (riderCheck['is_online'] != true) {
         debugPrint('Rider is not online: $riderId');
         return false;
       }
-      
+
       final supabase = Supabase.instance.client;
+      // Get the current status to determine the next status
+      final currentStatus = orderCheck['status'];
+      String newStatus = currentStatus == 'preparing' ? 'preparing' : 'ready';
+
       final response = await supabase
           .from('orders')
           .update({
-            'rider_id': riderId,
-            'status': 'assigned',
-            'updated_at': DateTime.now().toIso8601String(),
-          })
+        'rider_id': riderId,
+        'status': newStatus, // Keep the current status or use 'ready'
+        'assigned_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toIso8601String(),
+      })
           .eq('id', orderId)
           .select()
           .single();
@@ -393,12 +398,12 @@ class RiderAssignmentService {
         debugPrint('Failed to assign order: No response from server');
         return false;
       }
-      
+
       debugPrint('Successfully assigned order $orderId to rider $riderId');
-      
+
       // Here you might want to add push notification to the rider
       // await _sendNotificationToRider(riderId, orderId);
-      
+
       return true;
     } catch (e) {
       debugPrint('Error in _assignOrderToRider: $e');
@@ -417,14 +422,14 @@ class RiderAssignmentService {
   }) async {
     try {
       debugPrint('Calling RPC to update restaurant location');
-      
+
       final response = await _supabase.rpc('update_restaurant_location', params: {
         'p_user_id': userId,
         'p_latitude': latitude,
         'p_longitude': longitude,
         'p_address': address,
       });
-      
+
       debugPrint('RPC response: $response');
       return true;
     } catch (e) {
@@ -432,17 +437,17 @@ class RiderAssignmentService {
       return false;
     }
   }
-  
+
   // Helper method to calculate distance between two points in kilometers
   double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
     return Geolocator.distanceBetween(lat1, lon1, lat2, lon2) / 1000.0;
   }
-  
+
   // Debug method to check online riders
   Future<List<Map<String, dynamic>>> debugGetOnlineRiders() async {
     try {
       debugPrint('Checking for online riders in database...');
-      
+
       final response = await _supabase
           .from('riders')
           .select('''
@@ -457,21 +462,21 @@ class RiderAssignmentService {
             )
           ''')
           .eq('is_online', true);
-      
+
       final riders = List<Map<String, dynamic>>.from(response);
       debugPrint('Found ${riders.length} online riders in database');
-      
+
       for (final rider in riders) {
         debugPrint('Rider: ${rider['users']['name']} - Online: ${rider['is_online']} - Location: ${rider['current_location']}');
       }
-      
+
       return riders;
     } catch (e) {
       debugPrint('Error checking online riders: $e');
       return [];
     }
   }
-  
+
   // Future method to get merchant's location (to be implemented)
   // This would involve geocoding the pickup address or having merchants set their location
   Future<Map<String, double>?> _getMerchantLocation(String merchantId) async {

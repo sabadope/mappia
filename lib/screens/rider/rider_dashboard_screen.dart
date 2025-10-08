@@ -8,6 +8,7 @@ import '../../services/rider_location_service.dart';
 import '../../services/rider_service.dart';
 import '../../core/constants/app_constants.dart';
 import 'rider_profile_setup_screen.dart';
+import '../auth/login_screen.dart';
 
 class RiderDashboardScreen extends StatefulWidget {
   final String? userId;
@@ -31,12 +32,14 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
   String _riderLevel = 'Bronze';
   double _todayEarnings = 0.0;
   int _availableOrders = 0;
-  List<Map<String, dynamic>> _recentTransactions = [];
-  int _currentIndex = 0;
+  List<Map<String, dynamic>> _completedOrders = [];
+  int _selectedIndex = 0;
   final List<Map<String, dynamic>> _assignedOrders = [];
 
   StreamSubscription? _ordersSubscription;
   StreamSubscription? _locationSubscription;
+
+  StreamSubscription? _orderCompletedSubscription;
 
   @override
   void initState() {
@@ -45,6 +48,12 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
     // Add a listener to handle when the app returns to the foreground
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadRiderStatus();
+    });
+
+    // Listen for order completion events
+    _orderCompletedSubscription = _riderService.onOrderCompleted.listen((orderId) {
+      debugPrint('🔄 Order $orderId completed, refreshing dashboard...');
+      _loadDashboardData();
     });
   }
 
@@ -118,6 +127,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
   void dispose() {
     _locationSubscription?.cancel();
     _ordersSubscription?.cancel();
+    _orderCompletedSubscription?.cancel();
     // Remove the lifecycle observer when the widget is disposed
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -165,7 +175,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
 
       // Set up a new subscription to watch for assigned orders with status 'ready'
       _ordersSubscription = _riderService.watchAssignedOrders().listen(
-        (orders) {
+            (orders) {
           if (mounted) {
             setState(() {
               _assignedOrders.clear();
@@ -191,14 +201,16 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
       _riderService.watchActiveDelivery().listen((order) async {
         if (order != null && mounted) {
           // If there's an active delivery, navigate to delivery screen
-          await Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (context) =>
-                  DeliveryScreen(order: order, wasOnline: _isOnline),
+          final shouldRefresh = await Navigator.of(context).pushReplacement<bool, bool>(
+            MaterialPageRoute<bool>(
+              builder: (context) => DeliveryScreen(order: order, wasOnline: _isOnline),
             ),
-          );
-          // When returning from delivery screen, refresh the dashboard
-          _loadDashboardData();
+          ) ?? false;
+
+          // Refresh dashboard if we returned from a completed delivery
+          if (shouldRefresh && mounted) {
+            await _loadDashboardData();
+          }
         }
       });
     } catch (e) {
@@ -242,34 +254,68 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
   }
 
   Future<void> _loadDashboardData() async {
+    if (!mounted) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
     try {
-      // Load rider profile
-      final riderData = await _riderService.getRiderProfile();
-      if (mounted) {
-        setState(() {
-          _riderName = riderData?['users']?['name'] ?? 'Rider';
-          _riderLevel = riderData?['level']?.toString() ?? 'Bronze';
-          _isOnline = riderData?['is_online'] ?? false;
-          _isLocationTracking = _isOnline;
-        });
+      debugPrint('🔄 Loading dashboard data...');
+
+      // Load rider profile, dashboard data, and completed orders separately
+      final results = await Future.wait([
+        _riderService.getRiderProfile(),
+        _riderService.getDashboardData(),
+        _fetchCompletedOrders(), // Fetch completed orders directly
+      ]);
+
+      final riderData = results[0] as Map<String, dynamic>?;
+      final dashboardData = results[1] as Map<String, dynamic>?;
+      final completedOrders = results[2] as List<Map<String, dynamic>>;
+
+      if (!mounted) return;
+
+      debugPrint('📊 Dashboard data loaded:');
+      debugPrint('   - Today\'s earnings: ${dashboardData?['today_earnings'] ?? 0}');
+      debugPrint('   - Available orders: ${dashboardData?['available_orders'] ?? 0}');
+      debugPrint('   - Recent transactions: ${dashboardData?['recent_transactions']?.length ?? 0}');
+      debugPrint('   - Completed orders: ${completedOrders.length}');
+
+      if (completedOrders.isNotEmpty) {
+        debugPrint('   - First completed order ID: ${completedOrders.first['id']}');
       }
 
-      // Load dashboard data
-      final dashboardData = await _riderService.getDashboardData();
-      if (mounted) {
-        setState(() {
-          _todayEarnings = (dashboardData?['today_earnings'] ?? 0).toDouble();
-          _availableOrders = dashboardData?['available_orders'] ?? 0;
-          _recentTransactions = List<Map<String, dynamic>>.from(
-            dashboardData?['recent_transactions'] ?? [],
-          );
-        });
-      }
+      // Update state with new data
+      setState(() {
+        // Update rider profile
+        _riderName = riderData?['users']?['name'] ?? 'Rider';
+        _riderLevel = riderData?['level']?.toString() ?? 'Bronze';
+        _isOnline = riderData?['is_online'] ?? false;
+        _isLocationTracking = _isOnline;
+
+        // Update dashboard data
+        _todayEarnings = (dashboardData?['today_earnings'] ?? 0).toDouble();
+        _availableOrders = dashboardData?['available_orders'] ?? 0;
+        _completedOrders = completedOrders;
+      });
+
+      debugPrint('✅ Dashboard data updated successfully');
     } catch (e) {
+      debugPrint('❌ Error loading dashboard data: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load dashboard data: $e')),
+          const SnackBar(
+            content: Text('Failed to load dashboard data. Pull to refresh.'),
+            duration: Duration(seconds: 3),
+          ),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
       }
     }
   }
@@ -320,24 +366,24 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
             const SizedBox(height: 12),
             orders.isEmpty
                 ? const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 20.0),
-                    child: Text(
-                      'No assigned orders',
-                      style: TextStyle(
-                        color: Colors.grey,
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                  )
+              padding: EdgeInsets.symmetric(vertical: 20.0),
+              child: Text(
+                'No assigned orders',
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            )
                 : ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: orders.length,
-                    itemBuilder: (context, index) {
-                      final order = orders[index];
-                      return _buildOrderCard(order);
-                    },
-                  ),
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: orders.length,
+              itemBuilder: (context, index) {
+                final order = orders[index];
+                return _buildOrderCard(order);
+              },
+            ),
           ],
         ),
       ),
@@ -506,58 +552,60 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
 
   Future<bool> _showLocationPermissionDialog() async {
     return await showDialog<bool>(
-          context: context,
-          barrierDismissible: false,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              title: const Text('Location Permission Required'),
-              content: const Text(
-                'To go online and receive delivery requests, this app needs access to your location. '
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Location Permission Required'),
+          content: const Text(
+            'To go online and receive delivery requests, this app needs access to your location. '
                 'Please grant location permission to continue.',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text('Grant Permission'),
-                ),
-              ],
-            );
-          },
-        ) ??
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Grant Permission'),
+            ),
+          ],
+        );
+      },
+    ) ??
         false;
   }
 
   // Build the dashboard body
   Widget _buildDashboardBody() {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
+    Widget content = SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildHeaderCard(),
+          const SizedBox(height: 16),
+          _buildStatusCard(),
+          const SizedBox(height: 24),
+          _buildAssignedOrders(),
+          const SizedBox(height: 24),
+          _buildCompletedOrders(),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+
     return RefreshIndicator(
       onRefresh: () async {
-        // Only refresh dashboard data since orders are handled by the stream
         await _loadDashboardData();
+        // Small delay to show the refresh indicator
+        await Future.delayed(const Duration(milliseconds: 500));
       },
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _buildHeaderCard(),
-            const SizedBox(height: 20),
-            _buildStatusCard(),
-            const SizedBox(height: 20),
-            _buildAssignedOrders(),
-            const SizedBox(height: 20),
-            _buildQuickActions(),
-            const SizedBox(height: 20),
-            _buildRecentTransactions(),
-          ],
-        ),
-      ),
+      child: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : content,
     );
   }
 
@@ -706,43 +754,6 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
     );
   }
 
-  // Build quick actions section
-  Widget _buildQuickActions() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Quick Actions',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: _buildActionButton(
-                icon: Icons.history,
-                label: 'Order History',
-                onTap: () {
-                  // Navigate to order history
-                },
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _buildActionButton(
-                icon: Icons.settings,
-                label: 'Settings',
-                onTap: () {
-                  // Navigate to settings
-                },
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
   // Build a single action button
   Widget _buildActionButton({
     required IconData icon,
@@ -774,62 +785,62 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
     );
   }
 
-  // Build recent transactions section
-  Widget _buildRecentTransactions() {
+  // Build completed orders section
+  Widget _buildCompletedOrders() {
+    debugPrint('🔄 Building completed orders section. Found ${_completedOrders.length} orders');
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Recent Transactions',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Completed Orders',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            if (_completedOrders.isNotEmpty)
+              Text(
+                '${_completedOrders.length} orders',
+                style: const TextStyle(fontSize: 14, color: Colors.grey),
+              ),
+          ],
         ),
         const SizedBox(height: 12),
-        if (_recentTransactions.isEmpty)
-          const Center(
+        if (_isLoading && _completedOrders.isEmpty)
+          const Center(child: CircularProgressIndicator())
+        else if (_completedOrders.isEmpty)
+          const Card(
+            elevation: 2,
             child: Padding(
-              padding: EdgeInsets.all(24.0),
-              child: Text('No recent transactions'),
+              padding: EdgeInsets.all(16.0),
+              child: Center(child: Text('No completed orders')),
             ),
           )
         else
-          ..._recentTransactions.map(
-            (transaction) => _buildTransactionCard(transaction),
-          ),
+          ..._completedOrders.map((order) {
+            debugPrint('📦 Order ${order['id']} - Status: ${order['status']} - Completed at: ${order['completed_at']}');
+            return _buildCompletedOrderCard(order);
+          }).toList(),
       ],
     );
   }
 
-  // Build a single transaction card
-  Widget _buildTransactionCard(Map<String, dynamic> transaction) {
+  // Build completed order card
+  Widget _buildCompletedOrderCard(Map<String, dynamic> order) {
+    final orderId = order['id']?.toString().substring(0, 8) ?? 'N/A';
+    final total = order['total_amount']?.toStringAsFixed(2) ?? '0.00';
+    final completedAt = order['completed_at'] != null
+        ? DateTime.parse(order['completed_at']).toLocal().toString().substring(0, 16)
+        : 'N/A';
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: Colors.blue[50],
-            shape: BoxShape.circle,
-          ),
-          child: const Icon(Icons.delivery_dining, color: Colors.blue),
-        ),
-        title: Text(
-          transaction['description'] ?? 'Delivery',
-          style: const TextStyle(fontWeight: FontWeight.w500),
-        ),
-        subtitle: Text(
-          transaction['date'] ?? '',
-          style: const TextStyle(fontSize: 12),
-        ),
-        trailing: Text(
-          '\$${transaction['amount']?.toStringAsFixed(2) ?? '0.00'}',
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.green,
-          ),
-        ),
+        leading: const Icon(Icons.check_circle, color: Colors.green),
+        title: Text('Order #$orderId'),
+        subtitle: Text('Completed: $completedAt'),
+        trailing: Text('\$$total', style: const TextStyle(fontWeight: FontWeight.bold)),
       ),
     );
   }
@@ -953,18 +964,6 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
         setState(() {
           // Remove from assigned orders
           _assignedOrders.removeWhere((o) => o['id'] == order['id']);
-          
-          // Add to recent transactions
-          _recentTransactions.insert(0, {
-            'id': order['id'],
-            'type': 'pickup',
-            'description': 'Order #${order['id']} - Picked Up',
-            'amount': _calculateOrderTotal(order),
-            'status': 'picked_up',
-            'date': DateTime.now().toIso8601String(),
-            'order': updatedOrder,
-          });
-          
           _availableOrders = _assignedOrders.length;
         });
 
@@ -976,12 +975,17 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
             ),
           );
 
-          // Navigate to delivery screen
-          await Navigator.of(context).push(
-            MaterialPageRoute(
+          // Navigate to delivery screen and wait for result
+          final shouldRefresh = await Navigator.of(context).push<bool>(
+            MaterialPageRoute<bool>(
               builder: (context) => DeliveryScreen(order: updatedOrder, wasOnline: _isOnline),
             ),
-          );
+          ) ?? false;
+
+          // Refresh dashboard if we returned from a completed delivery
+          if (shouldRefresh && mounted) {
+            await _loadDashboardData();
+          }
 
           // Refresh dashboard data when returning from delivery
           _loadDashboardData();
@@ -1013,16 +1017,515 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
     }
   }
 
+  void _onNavigationItemTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+  }
+
+  Widget _buildCurrentPage() {
+    switch (_selectedIndex) {
+      case 0:
+        return _buildDashboardBody();
+      case 1:
+        return _buildOngoingOrdersPage();
+      case 2:
+        return _buildProfilePage();
+      default:
+        return _buildDashboardBody();
+    }
+  }
+
+  Widget _buildOngoingOrdersPage() {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _fetchOngoingOrders(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final ongoingOrders = snapshot.data ?? [];
+
+        return RefreshIndicator(
+          onRefresh: () async {
+            setState(() {}); // Trigger rebuild to refetch
+            await Future.delayed(const Duration(milliseconds: 500));
+          },
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Ongoing Orders',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                if (ongoingOrders.isEmpty)
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(48.0),
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons.delivery_dining,
+                            size: 80,
+                            color: Colors.grey[400],
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No ongoing orders',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  ...ongoingOrders.map((order) => _buildOngoingOrderCard(order)),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchOngoingOrders() async {
+    try {
+      final riderId = await _riderService.getCurrentRiderId();
+      if (riderId == null) return [];
+
+      // Fetch orders that are picked_up (ongoing delivery)
+      final response = await Supabase.instance.client
+          .from('orders')
+          .select('''
+            *,
+            users:customer_id(name, contact),
+            merchants:merchant_id(name),
+            order_items(
+              *,
+              foods(name, price)
+            )
+          ''')
+          .eq('rider_id', riderId)
+          .eq('status', 'picked_up')
+          .order('created_at', ascending: false);
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('❌ Error fetching ongoing orders: $e');
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchCompletedOrders() async {
+    try {
+      final riderId = await _riderService.getCurrentRiderId();
+      if (riderId == null) {
+        debugPrint('❌ No rider ID available for fetching completed orders');
+        return [];
+      }
+
+      debugPrint('🔍 Fetching completed orders for rider ID: $riderId');
+
+      // Fetch orders that are completed
+      final response = await Supabase.instance.client
+          .from('orders')
+          .select('''
+            *,
+            users:customer_id(name, contact),
+            merchants:merchant_id(name),
+            order_items(
+              *,
+              foods(name, price)
+            )
+          ''')
+          .eq('rider_id', riderId)
+          .eq('status', 'completed')
+          .order('completed_at', ascending: false)
+          .limit(10); // Limit to last 10 completed orders
+
+      final orders = List<Map<String, dynamic>>.from(response);
+      debugPrint('✅ Fetched ${orders.length} completed orders');
+
+      return orders;
+    } catch (e) {
+      debugPrint('❌ Error fetching completed orders: $e');
+      return [];
+    }
+  }
+
+  Widget _buildOngoingOrderCard(Map<String, dynamic> order) {
+    final customer = order['users'] ?? {};
+    final merchant = order['merchants'] ?? {};
+    final orderItems = order['order_items'] ?? [];
+    final total = _calculateOrderTotal(order);
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16.0),
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: InkWell(
+        onTap: () async {
+          // Navigate to delivery screen
+          final result = await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => DeliveryScreen(order: order, wasOnline: _isOnline),
+            ),
+          );
+
+          // Refresh data when returning from delivery screen
+          if (result == true && mounted) {
+            setState(() {}); // Trigger rebuild to refetch ongoing orders
+            await _loadDashboardData();
+          }
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppConstants.primaryColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          Icons.delivery_dining,
+                          color: AppConstants.primaryColor,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Order #${order['id']?.toString().substring(0, 8) ?? 'N/A'}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.orange,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Text(
+                              'IN DELIVERY',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey[600]),
+                ],
+              ),
+              const Divider(height: 24),
+              Row(
+                children: [
+                  Icon(Icons.person, size: 16, color: Colors.grey[600]),
+                  const SizedBox(width: 8),
+                  Text(
+                    customer['name'] ?? 'Unknown Customer',
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(Icons.restaurant, size: 16, color: Colors.grey[600]),
+                  const SizedBox(width: 8),
+                  Text(
+                    merchant['name'] ?? 'Unknown Merchant',
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(Icons.shopping_bag, size: 16, color: Colors.grey[600]),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${orderItems.length} ${orderItems.length == 1 ? 'item' : 'items'}',
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                ],
+              ),
+              const Divider(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Total Amount:',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  Text(
+                    'SAR ${total.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: AppConstants.primaryColor,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProfilePage() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Profile',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Center(
+            child: Column(
+              children: [
+                CircleAvatar(
+                  radius: 50,
+                  backgroundColor: AppConstants.primaryColor,
+                  child: const Icon(
+                    Icons.person,
+                    size: 50,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  _riderName,
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.orange[100],
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    _riderLevel,
+                    style: TextStyle(
+                      color: Colors.orange[800],
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 32),
+          Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.monetization_on, color: Colors.green),
+                  title: const Text('Total Earnings'),
+                  trailing: Text(
+                    '\$${_todayEarnings.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green,
+                    ),
+                  ),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.delivery_dining, color: Colors.blue),
+                  title: const Text('Completed Orders'),
+                  trailing: Text(
+                    '${_completedOrders.length}',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: Icon(
+                    _isOnline ? Icons.online_prediction : Icons.offline_bolt,
+                    color: _isOnline ? Colors.green : Colors.grey,
+                  ),
+                  title: const Text('Status'),
+                  trailing: Text(
+                    _isOnline ? 'Online' : 'Offline',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: _isOnline ? Colors.green : Colors.grey,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.settings),
+                  title: const Text('Settings'),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: () {
+                    // TODO: Navigate to settings
+                  },
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.help_outline),
+                  title: const Text('Help & Support'),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: () {
+                    // TODO: Navigate to help
+                  },
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.logout, color: Colors.red),
+                  title: const Text(
+                    'Logout',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.red),
+                  onTap: () async {
+                    final shouldLogout = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Logout'),
+                        content: const Text('Are you sure you want to log out?'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('Cancel'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text(
+                              'Okay',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+
+                    if (shouldLogout == true && mounted) {
+                      await Supabase.instance.client.auth.signOut();
+                      if (mounted) {
+                        Navigator.of(context).pushReplacement(
+                          MaterialPageRoute(
+                            builder: (context) => const LoginScreen(),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    String appBarTitle = 'Rider Dashboard';
+    if (_selectedIndex == 1) {
+      appBarTitle = 'Ongoing Orders';
+    } else if (_selectedIndex == 2) {
+      appBarTitle = 'Profile';
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Rider Dashboard'),
+        title: Text(appBarTitle),
         backgroundColor: AppConstants.primaryColor,
         foregroundColor: Colors.white,
         elevation: 0,
       ),
-      body: _buildDashboardBody(),
+      body: _buildCurrentPage(),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _selectedIndex,
+        onTap: _onNavigationItemTapped,
+        selectedItemColor: AppConstants.primaryColor,
+        unselectedItemColor: Colors.grey,
+        type: BottomNavigationBarType.fixed,
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home),
+            label: 'Home',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.delivery_dining),
+            label: 'Ongoing Orders',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person),
+            label: 'Profile',
+          ),
+        ],
+      ),
     );
   }
 }

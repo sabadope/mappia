@@ -44,7 +44,7 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
     _refreshTimer?.cancel();
     super.dispose();
   }
-  
+
   // Helper method to safely access context
   void _showSnackBar(String message, {bool isError = true}) {
     if (!mounted) return;
@@ -58,19 +58,19 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
 
   // Helper method to show location error messages with optional action
   void _showLocationErrorSnackBar(
-    String message, {
-    SnackBarAction? action,
-    Duration duration = const Duration(seconds: 5),
-  }) {
+      String message, {
+        SnackBarAction? action,
+        Duration duration = const Duration(seconds: 5),
+      }) {
     if (!mounted) return;
-    
+
     final snackBar = SnackBar(
       content: Text(message),
       backgroundColor: Colors.red,
       duration: duration,
       action: action,
     );
-    
+
     ScaffoldMessenger.of(context).showSnackBar(snackBar);
   }
 
@@ -81,7 +81,7 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
       print('DEBUG: Restaurant ID set from widget: $_restaurantId');
       return;
     }
-    
+
     // Fallback to Supabase Auth (for admin users)
     final user = Supabase.instance.client.auth.currentUser;
     print('DEBUG: Current user: ${user?.id}');
@@ -96,7 +96,7 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
 
   Future<void> _fetchOrders() async {
     if (!mounted) return;
-    
+
     print('DEBUG: Fetching orders for restaurant: $_restaurantId');
     if (_restaurantId == null) {
       print('DEBUG: Restaurant ID is null, trying to get current restaurant');
@@ -106,10 +106,10 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
         if (mounted) {
           setState(() => _isLoading = false);
         }
-      return;
+        return;
       }
     }
-    
+
     setState(() => _isLoading = true);
     try {
       print('DEBUG: Executing Supabase query...');
@@ -131,46 +131,46 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
           ''')
           .eq('merchant_id', _restaurantId!)
           .order('created_at', ascending: false);
-      
+
       print('DEBUG: Query response: $response');
-      
-             // Process orders
-       final List<Map<String, dynamic>> processedOrders = [];
-       final List<Map<String, dynamic>> processedCompletedOrders = [];
-       
-       for (final order in response) {
-         final orderItems = order['order_items'] as List<dynamic>? ?? [];
-         final customer = order['users'] as Map<String, dynamic>? ?? {};
-         final items = orderItems.map((item) {
-           final food = item['foods'] as Map<String, dynamic>?;
-           return food?['name'] ?? 'Unknown Item';
-         }).toList();
-         
-         final orderData = {
-           'id': order['id'],
-           'customer': customer['name'] ?? 'Unknown Customer',
-           'items': items,
-           'status': order['status'] ?? 'pending',
-           'address': order['delivery_address'] ?? 'No address',
-           'total_amount': order['total_amount'] ?? 0.0,
-           'created_at': order['created_at'],
-         };
-         
-         // Separate active and completed orders
-         if (order['status'] == 'completed') {
-           processedCompletedOrders.add(orderData);
-         } else {
-           processedOrders.add(orderData);
-         }
-       }
-       
-       print('DEBUG: Active orders: ${processedOrders.length}');
-       print('DEBUG: Completed orders: ${processedCompletedOrders.length}');
-       setState(() {
-         orders = processedOrders;
-         completedOrders = processedCompletedOrders;
-         _isLoading = false;
-       });
+
+      // Process orders
+      final List<Map<String, dynamic>> processedOrders = [];
+      final List<Map<String, dynamic>> processedCompletedOrders = [];
+
+      for (final order in response) {
+        final orderItems = order['order_items'] as List<dynamic>? ?? [];
+        final customer = order['users'] as Map<String, dynamic>? ?? {};
+        final items = orderItems.map((item) {
+          final food = item['foods'] as Map<String, dynamic>?;
+          return food?['name'] ?? 'Unknown Item';
+        }).toList();
+
+        final orderData = {
+          'id': order['id'],
+          'customer': customer['name'] ?? 'Unknown Customer',
+          'items': items,
+          'status': order['status'] ?? 'pending',
+          'address': order['delivery_address'] ?? 'No address',
+          'total_amount': order['total_amount'] ?? 0.0,
+          'created_at': order['created_at'],
+        };
+
+        // Separate active and completed orders
+        if (order['status'] == 'completed') {
+          processedCompletedOrders.add(orderData);
+        } else {
+          processedOrders.add(orderData);
+        }
+      }
+
+      print('DEBUG: Active orders: ${processedOrders.length}');
+      print('DEBUG: Completed orders: ${processedCompletedOrders.length}');
+      setState(() {
+        orders = processedOrders;
+        completedOrders = processedCompletedOrders;
+        _isLoading = false;
+      });
     } catch (e) {
       print('DEBUG: Error fetching orders: $e');
       setState(() => _isLoading = false);
@@ -185,15 +185,15 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
   };
 
   Future<bool> _showRiderSelectionModal(
-      BuildContext context, 
-      String orderId, 
+      BuildContext context,
+      String orderId,
       Position restaurantLocation,
-  ) async {
+      ) async {
     final riderService = RiderAssignmentService();
     List<Map<String, dynamic>> availableRiders = [];
     bool isLoading = true;
     String? errorMessage;
-    
+
     // Show the dialog and wait for a result
     final result = await showDialog<bool>(
       context: context,
@@ -203,20 +203,20 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
           // Load available riders when dialog is shown
           if (isLoading) {
             debugPrint('Loading available riders...');
-            
+
             // First, debug check for online riders
             riderService.debugGetOnlineRiders().then((onlineRiders) {
               debugPrint('Debug: Found ${onlineRiders.length} online riders in database');
             });
-            
+
             riderService
                 .getAvailableRidersNearby(
-                  restaurantLocation.latitude,
-                  restaurantLocation.longitude,
-                )
+              restaurantLocation.latitude,
+              restaurantLocation.longitude,
+            )
                 .then((riders) {
               debugPrint('Found ${riders.length} available riders');
-              
+
               if (mounted) {
                 setState(() {
                   availableRiders = riders;
@@ -228,7 +228,7 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
               }
             }).catchError((e) {
               debugPrint('Error loading riders: $e');
-              
+
               if (mounted) {
                 setState(() {
                   isLoading = false;
@@ -261,216 +261,216 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
               width: double.maxFinite,
               child: errorMessage != null
                   ? Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.error_outline,
-                          color: Theme.of(context).colorScheme.error,
-                          size: 48,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          errorMessage!,
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 16),
-                        if (errorMessage!.contains('No riders available'))
-                          ElevatedButton.icon(
-                            onPressed: () {
-                              setState(() {
-                                isLoading = true;
-                                errorMessage = null;
-                              });
-                            },
-                            icon: const Icon(Icons.refresh),
-                            label: const Text('Try Again'),
-                          ),
-                      ],
-                    )
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    color: Theme.of(context).colorScheme.error,
+                    size: 48,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    errorMessage!,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  if (errorMessage!.contains('No riders available'))
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          isLoading = true;
+                          errorMessage = null;
+                        });
+                      },
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Try Again'),
+                    ),
+                ],
+              )
                   : availableRiders.isEmpty
-                      ? const Text('No riders available in your area.')
-                      : ListView.builder(
-                          shrinkWrap: true,
-                          itemCount: availableRiders.length,
-                          itemBuilder: (context, index) {
-                            final rider = availableRiders[index];
-                            final distance = Geolocator.distanceBetween(
-                              restaurantLocation.latitude,
-                              restaurantLocation.longitude,
-                              (rider['latitude'] as num?)?.toDouble() ?? 0.0,
-                              (rider['longitude'] as num?)?.toDouble() ?? 0.0,
-                            );
-                            
-                            String distanceText = '';
-                            if (distance > 1000) {
-                              distanceText = '${(distance / 1000).toStringAsFixed(1)} km';
-                            } else {
-                              distanceText = '${distance.toStringAsFixed(0)} m';
-                            }
-                            
-                            return Card(
-                              margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 0),
-                              child: ListTile(
-                                leading: CircleAvatar(
-                                  backgroundColor: Theme.of(context).primaryColor.withOpacity(0.2),
-                                  child: Icon(
-                                    Icons.delivery_dining,
-                                    color: Theme.of(context).primaryColor,
+                  ? const Text('No riders available in your area.')
+                  : ListView.builder(
+                shrinkWrap: true,
+                itemCount: availableRiders.length,
+                itemBuilder: (context, index) {
+                  final rider = availableRiders[index];
+                  final distance = Geolocator.distanceBetween(
+                    restaurantLocation.latitude,
+                    restaurantLocation.longitude,
+                    (rider['latitude'] as num?)?.toDouble() ?? 0.0,
+                    (rider['longitude'] as num?)?.toDouble() ?? 0.0,
+                  );
+
+                  String distanceText = '';
+                  if (distance > 1000) {
+                    distanceText = '${(distance / 1000).toStringAsFixed(1)} km';
+                  } else {
+                    distanceText = '${distance.toStringAsFixed(0)} m';
+                  }
+
+                  return Card(
+                    margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 0),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: Theme.of(context).primaryColor.withOpacity(0.2),
+                        child: Icon(
+                          Icons.delivery_dining,
+                          color: Theme.of(context).primaryColor,
+                        ),
+                      ),
+                      title: Text(
+                        rider['name'] ?? 'Rider ${index + 1}',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${rider['vehicle_type'] ?? 'Bike'} • $distanceText away',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                          if (rider['is_online'] == true)
+                            Row(
+                              children: [
+                                Container(
+                                  width: 8,
+                                  height: 8,
+                                  margin: const EdgeInsets.only(right: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green,
+                                    shape: BoxShape.circle,
                                   ),
                                 ),
-                                title: Text(
-                                  rider['name'] ?? 'Rider ${index + 1}',
-                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                                Text(
+                                  'Online',
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Colors.green,
+                                  ),
                                 ),
-                                subtitle: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      '${rider['vehicle_type'] ?? 'Bike'} • $distanceText away',
-                                      style: Theme.of(context).textTheme.bodySmall,
+                              ],
+                            ),
+                        ],
+                      ),
+                      onTap: () async {
+                        // Show confirmation dialog
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Confirm Assignment'),
+                            content: Text(
+                              'Assign this order to ${rider['name'] ?? 'the selected rider'}?',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(context).pop(false),
+                                child: const Text('CANCEL'),
+                              ),
+                              ElevatedButton(
+                                onPressed: () => Navigator.of(context).pop(true),
+                                child: const Text('ASSIGN'),
+                              ),
+                            ],
+                          ),
+                        );
+
+                        if (confirm != true) return;
+
+                        // Show loading indicator
+                        final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+                        final overlaySize = overlay.size;
+
+                        showDialog(
+                          context: context,
+                          barrierDismissible: false,
+                          builder: (context) => Center(
+                            child: Container(
+                              width: overlaySize.width * 0.7,
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.black87,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const CircularProgressIndicator(
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'Assigning rider...',
+                                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                      color: Colors.white,
                                     ),
-                                    if (rider['is_online'] == true)
-                                      Row(
-                                        children: [
-                                          Container(
-                                            width: 8,
-                                            height: 8,
-                                            margin: const EdgeInsets.only(right: 4),
-                                            decoration: BoxDecoration(
-                                              color: Colors.green,
-                                              shape: BoxShape.circle,
-                                            ),
-                                          ),
-                                          Text(
-                                            'Online',
-                                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                              color: Colors.green,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                  ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+
+                        try {
+                          // Assign the selected rider
+                          final success = await riderService
+                              .assignSpecificRiderToOrder(orderId, rider['id']);
+
+                          if (mounted) {
+                            Navigator.of(context).pop(); // Close loading dialog
+
+                            if (success) {
+                              // Show success message and close the rider selection dialog
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Order assigned to ${rider['name'] ?? 'rider'}'
+                                        ' (${rider['vehicle_type'] ?? 'Bike'})',
+                                  ),
+                                  backgroundColor: Colors.green,
+                                  duration: const Duration(seconds: 3),
                                 ),
-                                onTap: () async {
-                                  // Show confirmation dialog
-                                  final confirm = await showDialog<bool>(
-                                    context: context,
-                                    builder: (context) => AlertDialog(
-                                      title: const Text('Confirm Assignment'),
-                                      content: Text(
-                                        'Assign this order to ${rider['name'] ?? 'the selected rider'}?',
-                                      ),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () => Navigator.of(context).pop(false),
-                                          child: const Text('CANCEL'),
-                                        ),
-                                        ElevatedButton(
-                                          onPressed: () => Navigator.of(context).pop(true),
-                                          child: const Text('ASSIGN'),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                  
-                                  if (confirm != true) return;
-                                  
-                                  // Show loading indicator
-                                  final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
-                                  final overlaySize = overlay.size;
-                                  
-                                  showDialog(
-                                    context: context,
-                                    barrierDismissible: false,
-                                    builder: (context) => Center(
-                                      child: Container(
-                                        width: overlaySize.width * 0.7,
-                                        padding: const EdgeInsets.all(16),
-                                        decoration: BoxDecoration(
-                                          color: Colors.black87,
-                                          borderRadius: BorderRadius.circular(8),
-                                        ),
-                                        child: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            const CircularProgressIndicator(
-                                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                            ),
-                                            const SizedBox(height: 16),
-                                            Text(
-                                              'Assigning rider...',
-                                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                                color: Colors.white,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                  
-                                  try {
-                                    // Assign the selected rider
-                                    final success = await riderService
-                                        .assignSpecificRiderToOrder(orderId, rider['id']);
-                                    
-                                    if (mounted) {
-                                      Navigator.of(context).pop(); // Close loading dialog
-                                      
-                                      if (success) {
-                                        // Show success message and close the rider selection dialog
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(
-                                            content: Text(
-                                              'Order assigned to ${rider['name'] ?? 'rider'}' 
-                                              ' (${rider['vehicle_type'] ?? 'Bike'})',
-                                            ),
-                                            backgroundColor: Colors.green,
-                                            duration: const Duration(seconds: 3),
-                                          ),
-                                        );
-                                        // Close the rider selection dialog with success
-                                        Navigator.of(context).pop(true);
-                                        // Refresh orders to show updated status
-                                        _fetchOrders();
-                                      } else {
-                                        // Show error message but keep the dialog open
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(
-                                            content: Text('Failed to assign rider. Please try again.'),
-                                            backgroundColor: Colors.red,
-                                            duration: Duration(seconds: 3),
-                                          ),
-                                        );
-                                      }
-                                    }
-                                  } catch (e) {
-                                    debugPrint('Error assigning rider: $e');
-                                    if (mounted) {
-                                      Navigator.of(context).pop(); // Close loading dialog
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: const Text('An error occurred. Please try again.'),
-                                          backgroundColor: Colors.red,
-                                          duration: const Duration(seconds: 3),
-                                          action: SnackBarAction(
-                                            label: 'RETRY',
-                                            textColor: Colors.white,
-                                            onPressed: () {
-                                              // Retry assignment
-                                              Navigator.of(context).pop(false);
-                                              _showRiderSelectionModal(context, orderId, restaurantLocation);
-                                            },
-                                          ),
-                                        ),
-                                      );
-                                    }
-                                  }
-                                },
+                              );
+                              // Close the rider selection dialog with success
+                              Navigator.of(context).pop(true);
+                              // Refresh orders to show updated status
+                              _fetchOrders();
+                            } else {
+                              // Show error message but keep the dialog open
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Failed to assign rider. Please try again.'),
+                                  backgroundColor: Colors.red,
+                                  duration: Duration(seconds: 3),
+                                ),
+                              );
+                            }
+                          }
+                        } catch (e) {
+                          debugPrint('Error assigning rider: $e');
+                          if (mounted) {
+                            Navigator.of(context).pop(); // Close loading dialog
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: const Text('An error occurred. Please try again.'),
+                                backgroundColor: Colors.red,
+                                duration: const Duration(seconds: 3),
+                                action: SnackBarAction(
+                                  label: 'RETRY',
+                                  textColor: Colors.white,
+                                  onPressed: () {
+                                    // Retry assignment
+                                    Navigator.of(context).pop(false);
+                                    _showRiderSelectionModal(context, orderId, restaurantLocation);
+                                  },
+                                ),
                               ),
                             );
-                          },
-                        ),
+                          }
+                        }
+                      },
+                    ),
+                  );
+                },
+              ),
             ),
             actions: [
               TextButton(
@@ -493,7 +493,7 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
         },
       ),
     );
-    
+
     // Return the result of the dialog (true if rider was assigned, false otherwise)
     return result ?? false;
   }
@@ -501,15 +501,15 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
   Future<void> _updateOrderStatus(int index) async {
     final orderList = _getOrdersByStatus(_selectedStatus);
     if (index >= orderList.length) return;
-    
+
     final order = orderList[index];
     final orderId = order['id'].toString();
     final currentStatus = order['status'];
     String newStatus = currentStatus;
     bool shouldUpdateStatus = true;
-    
+
     setState(() => _isLoading = true);
-    
+
     try {
       // Handle different status transitions
       if (currentStatus == 'pending') {
@@ -522,17 +522,17 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
           final riderService = RiderAssignmentService();
           debugPrint('Attempting to get restaurant location...');
           final position = await riderService.getRestaurantLocation(_restaurantId!);
-          
+
           debugPrint('Using restaurant location: ${position.latitude}, ${position.longitude}');
-          
+
           // Show rider selection modal for 'preparing' -> 'ready' transition
           newStatus = 'ready';
           final riderAssigned = await _showRiderSelectionModal(
-            context, 
-            orderId, 
+            context,
+            orderId,
             position,
           );
-          
+
           if (!riderAssigned) {
             // If no rider was assigned, keep status as 'preparing'
             newStatus = 'preparing';
@@ -590,30 +590,30 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
       } else if (currentStatus == 'ready') {
         newStatus = 'completed';
       }
-      
+
       // Only update status if it has changed and we should update it
       if (shouldUpdateStatus && newStatus != currentStatus) {
         debugPrint('Updating order $orderId status from $currentStatus to $newStatus');
-        
+
         try {
           final response = await _supabase
-            .from('orders')
-            .update({
-              'status': newStatus,
-              'updated_at': DateTime.now().toIso8601String(),
-            })
-            .eq('id', orderId)
-            .select();
-        
+              .from('orders')
+              .update({
+            'status': newStatus,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+              .eq('id', orderId)
+              .select();
+
           debugPrint('Update response: $response');
-          
+
           if (response.isEmpty) {
             throw Exception('No data returned from server');
           }
 
           // Refresh the orders list
           _fetchOrders();
-          
+
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -676,7 +676,7 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
     final today = DateTime(now.year, now.month, now.day);
     final yesterday = today.subtract(const Duration(days: 1));
     final dateOnly = DateTime(philippinesTime.year, philippinesTime.month, philippinesTime.day);
-    
+
     if (dateOnly == today) {
       return 'Today, ${philippinesTime.hour}:${philippinesTime.minute.toString().padLeft(2, '0')}';
     } else if (dateOnly == yesterday) {
@@ -696,7 +696,7 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
 
   List<Map<String, dynamic>> _getOrdersByStatus(String status) {
     if (!mounted) return [];
-    
+
     switch (status) {
       case 'pending':
         return orders.where((o) => o['status'] == 'pending').toList();
@@ -759,9 +759,9 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              isHistory 
-                ? 'Completed orders will appear here'
-                : 'Orders will appear here when customers place them',
+              isHistory
+                  ? 'Completed orders will appear here'
+                  : 'Orders will appear here when customers place them',
               style: TextStyle(color: Colors.grey[500]),
               textAlign: TextAlign.center,
             ),
@@ -775,11 +775,11 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
       color: AppConstants.primaryColor,
       child: Container(
         height: MediaQuery.of(context).size.height * 0.6,
-      child: ListView.builder(
+        child: ListView.builder(
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-        itemCount: orderList.length,
-        itemBuilder: (context, index) {
-          final order = orderList[index];
+          itemCount: orderList.length,
+          itemBuilder: (context, index) {
+            final order = orderList[index];
             final statusColor = _getStatusColor(order['status']);
 
             return Container(
@@ -804,30 +804,30 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
                 child: InkWell(
                   borderRadius: BorderRadius.circular(12),
                   onTap: () => _showOrderDetails(order),
-            child: Padding(
+                  child: Padding(
                     padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         // Top row - Order ID and quick stats
                         IntrinsicHeight(
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+                            children: [
                               // Left side - Food Order ID
-                      Expanded(
-                        child: Text(
+                              Expanded(
+                                child: Text(
                                   'Order #${order['id'].toString().substring(0, 8)}',
                                   style: const TextStyle(
                                     fontSize: 15,
                                     fontWeight: FontWeight.w600,
                                     color: Colors.black87,
-                          overflow: TextOverflow.ellipsis,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                   maxLines: 1,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
                               // Right side - Items count and time
                               IntrinsicWidth(
                                 child: Row(
@@ -846,7 +846,7 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
                                       ),
                                     ),
                                     const SizedBox(width: 4),
-                  Text(
+                                    Text(
                                       '•',
                                       style: TextStyle(
                                         fontSize: 12,
@@ -864,9 +864,9 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                       ),
-                      ),
-                    ],
-                  ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ],
                           ),
@@ -874,7 +874,7 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
                         const SizedBox(height: 8),
                         // Bottom row - Customer name and total amount
                         Row(
-                    children: [
+                          children: [
                             // Left side - Customer name
                             Expanded(
                               flex: 3,
@@ -894,21 +894,21 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.end,
                                 children: [
-                      Text(
-                        'SAR ${(order['total_amount'] ?? 0.0).toStringAsFixed(2)}',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: AppConstants.primaryColor,
-                        ),
-                      ),
-                    ],
-                  ),
+                                  Text(
+                                    'SAR ${(order['total_amount'] ?? 0.0).toStringAsFixed(2)}',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppConstants.primaryColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                         ),
                         // Status and action button
-                    const SizedBox(height: 12),
+                        const SizedBox(height: 12),
                         Row(
                           children: [
                             // Status indicator
@@ -946,12 +946,12 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                 ),
-                                onPressed: () => order['status'] == 'completed' 
+                                onPressed: () => order['status'] == 'completed'
                                     ? _showOrderDetails(order)
                                     : _updateOrderStatus(index),
                                 child: Text(
-                                  order['status'] == 'completed' 
-                                      ? 'Order Details' 
+                                  order['status'] == 'completed'
+                                      ? 'Order Details'
                                       : _nextStatusLabel(order['status']),
                                   style: const TextStyle(
                                     color: Colors.white,
@@ -1013,13 +1013,13 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
           child: SafeArea(
             top: false,
-          child: Column(
+            child: Column(
               mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
+                  children: [
                     const Text('Order Details', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
                     IconButton(
                       icon: const Icon(Icons.close),
@@ -1029,7 +1029,7 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
                 ),
                 const SizedBox(height: 8),
                 Row(
-                          children: [
+                  children: [
                     Container(
                       width: 8,
                       height: 8,
@@ -1051,14 +1051,14 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
                   const Text('Items', style: TextStyle(fontWeight: FontWeight.w600)),
                   const SizedBox(height: 8),
                   ...items.map((name) => Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: Row(
-                          children: [
-                            const Text('• '),
-                            Expanded(child: Text(name)),
-                          ],
-                        ),
-                      )),
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(
+                      children: [
+                        const Text('• '),
+                        Expanded(child: Text(name)),
+                      ],
+                    ),
+                  )),
                   const SizedBox(height: 8),
                 ],
               ],
@@ -1088,7 +1088,7 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
             ),
           ),
           child: Row(
-                          children: [
+            children: [
               // Icon on the left
               Padding(
                 padding: const EdgeInsets.only(left: 12),
@@ -1107,33 +1107,33 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
                       color: isSelected ? color : Colors.grey[700],
-                        ),
-                      ),
                     ),
                   ),
+                ),
+              ),
               // Count on the right
               Padding(
                 padding: const EdgeInsets.only(right: 12),
                 child: Text(
                   '(${orderCount})',
-                              style: TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
-                                fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.bold,
                     color: color,
-                              ),
-                            ),
+                  ),
+                ),
               ),
-                          ],
-                        ),
-                      ),
-                    ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     if (!mounted) return const SizedBox.shrink();
-    
+
     return Scaffold(
       key: GlobalKey<ScaffoldState>(),
       appBar: AppBar(
@@ -1153,9 +1153,9 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
                 ),
               );
             },
-                  ),
-                ],
-              ),
+          ),
+        ],
+      ),
       backgroundColor: AppConstants.backgroundColor,
       body: SafeArea(
         child: RefreshIndicator(
@@ -1168,37 +1168,37 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // 2x2 Status Grid
-              Container(
+                  Container(
                     height: 120,
                     child: Column(
                       children: [
                         // Upper row
                         Expanded(
-                      child: Row(
-                        children: [
+                          child: Row(
+                            children: [
                               _buildStatusBox('pending', 'Pending', Colors.blue, Icons.pending_actions),
                               _buildStatusBox('preparing', 'Serving', Colors.red, Icons.restaurant),
-                        ],
-                      ),
-                    ),
+                            ],
+                          ),
+                        ),
                         const SizedBox(height: 8),
                         // Lower row
                         Expanded(
-                      child: Row(
-                        children: [
+                          child: Row(
+                            children: [
                               _buildStatusBox('ready', 'Ready', const Color(0xFFD4A900), Icons.check_circle),
                               _buildStatusBox('completed', 'Completed', Colors.green, Icons.done_all),
-                        ],
-                      ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
+                  ),
+                  const SizedBox(height: 16),
 
                   // Status Title
                   Row(
-                        children: [
+                    children: [
                       Text(
                         '${_getStatusDisplayName(_selectedStatus)} Orders',
                         style: AppConstants.subheadingStyle.copyWith(
@@ -1214,16 +1214,16 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
                         ),
                       ),
                     ],
-              ),
-              const SizedBox(height: 16),
+                  ),
+                  const SizedBox(height: 16),
 
                   // Orders List
                   _isLoading
                       ? const Center(child: CircularProgressIndicator(color: AppConstants.primaryColor))
                       : _buildOrdersList(
-                          _getOrdersByStatus(_selectedStatus),
-                          _selectedStatus == 'completed',
-                        ),
+                    _getOrdersByStatus(_selectedStatus),
+                    _selectedStatus == 'completed',
+                  ),
                 ],
               ),
             ),
@@ -1239,20 +1239,20 @@ class _RestaurantDashboardScreenState extends State<RestaurantDashboardScreen> {
                 _showSnackBar('Restaurant ID not found. Please try again.');
                 return;
               }
-                    Navigator.push(
+              Navigator.push(
                 ctx,
-                      MaterialPageRoute(
+                MaterialPageRoute(
                   builder: (context) => RestaurantMenuScreen(userId: _restaurantId!),
-                      ),
-                    );
-                  },
+                ),
+              );
+            },
             backgroundColor: AppConstants.primaryColor,
             child: const Icon(Icons.restaurant, color: Colors.white, size: 28),
             tooltip: 'Add Food Item',
-                ),
-              ),
           ),
+        ),
+      ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endDocked,
     );
   }
-} 
+}

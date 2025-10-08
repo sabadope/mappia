@@ -4,6 +4,8 @@ import '../../core/constants/app_constants.dart';
 import 'view_all_screen.dart';
 import 'merchant_products_screen.dart';
 import '../auth/login_screen.dart';
+import 'order_confirmation_screen.dart';
+import 'my_orders_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class MenuScreen extends StatefulWidget {
@@ -59,9 +61,11 @@ class _MenuScreenState extends State<MenuScreen> {
   Future<void> _fetchFavoriteFoods() async {
     // Fetch favorite foods from Supabase if you have a favorites table or logic
     // For now, leave as empty or implement as needed
-    setState(() {
-      _favoriteFoods = [];
-    });
+    if (mounted) {
+      setState(() {
+        _favoriteFoods = [];
+      });
+    }
   }
 
   Future<void> _loadCartFromDatabase() async {
@@ -73,7 +77,7 @@ class _MenuScreenState extends State<MenuScreen> {
       }
 
       print('DEBUG: Loading cart from database for user: $userId');
-      
+
       final response = await Supabase.instance.client
           .from('cart_items')
           .select('''
@@ -89,12 +93,16 @@ class _MenuScreenState extends State<MenuScreen> {
           ''')
           .eq('customer_id', userId);
 
+      if (!mounted) return;
+
       print('DEBUG: Cart items from database: $response');
 
       final List<Map<String, dynamic>> cartItems = [];
       int cartCount = 0;
 
       for (final item in response) {
+        if (!mounted) return;
+
         final food = item['foods'] as Map<String, dynamic>?;
         if (food != null) {
           cartItems.add({
@@ -110,11 +118,13 @@ class _MenuScreenState extends State<MenuScreen> {
         }
       }
 
-      setState(() {
-        _cartItems.clear();
-        _cartItems.addAll(cartItems);
-        _cartCount = cartCount;
-      });
+      if (mounted) {
+        setState(() {
+          _cartItems.clear();
+          _cartItems.addAll(cartItems);
+          _cartCount = cartCount;
+        });
+      }
 
       print('DEBUG: Loaded ${cartItems.length} items from cart, total count: $cartCount');
     } catch (e) {
@@ -129,14 +139,14 @@ class _MenuScreenState extends State<MenuScreen> {
         print('DEBUG: Using userId from widget: ${widget.userId}');
         return widget.userId;
       }
-      
+
       // Fallback to Supabase Auth
       final user = Supabase.instance.client.auth.currentUser;
       if (user != null) {
         print('DEBUG: Using Supabase Auth user: ${user.id}');
         return user.id;
       }
-      
+
       print('DEBUG: No user ID found');
       return null;
     } catch (e) {
@@ -145,32 +155,32 @@ class _MenuScreenState extends State<MenuScreen> {
     }
   }
 
-  Future<bool> _createOrder(String deliveryAddress, String paymentMethod) async {
+  Future<Map<String, dynamic>?> _createOrder(String deliveryAddress, String paymentMethod) async {
     try {
       print('DEBUG: Creating order...');
-      
+
       // Get current user ID
       final userId = await _getCurrentUserId();
       if (userId == null) {
         print('DEBUG: No user ID found');
-        return false;
+        return null;
       }
-      
+
       // Calculate total amount (already includes delivery fee)
       double totalAmount = _getTotalPrice();
       const deliveryFee = 3.0;
-      
+
       print('DEBUG: Total amount: $totalAmount');
       print('DEBUG: Cart items: ${_cartItems.length}');
-      
+
       // Debug: Print all cart items
       for (int i = 0; i < _cartItems.length; i++) {
         print('DEBUG: Cart item $i: ${_cartItems[i]}');
       }
-      
+
       // Group items by merchant (restaurant)
       Map<String, List<Map<String, dynamic>>> merchantOrders = {};
-      
+
       for (final item in _cartItems) {
         print('DEBUG: Cart item: ${item['name']}, created_by: ${item['created_by']}');
         final merchantId = item['created_by'];
@@ -183,78 +193,91 @@ class _MenuScreenState extends State<MenuScreen> {
           print('DEBUG: Warning - item ${item['name']} has no created_by field');
         }
       }
-      
+
       print('DEBUG: Merchant orders: ${merchantOrders.keys.length}');
-      
+
+      // Store the first order ID to return
+      String? firstOrderId;
+
       // Create orders for each merchant
       for (final merchantId in merchantOrders.keys) {
         final items = merchantOrders[merchantId]!;
         double merchantTotal = 0;
-        
+
         for (final item in items) {
           merchantTotal += (item['price'] ?? 0.0) * (item['quantity'] ?? 1);
         }
-        
+
         // Add proportional delivery fee
         final proportionalDeliveryFee = (deliveryFee * items.length) / _cartItems.length;
         merchantTotal += proportionalDeliveryFee;
-        
+
         print('DEBUG: Creating order for merchant $merchantId, total: $merchantTotal');
-        
+
         // Create order
         final orderResponse = await Supabase.instance.client
             .from('orders')
             .insert({
-              'customer_id': userId,
-              'merchant_id': merchantId,
-              'status': 'pending',
-              'total_amount': merchantTotal,
-              'delivery_fee': proportionalDeliveryFee,
-              'tip_amount': 0.0,
-              'pickup_address': 'Restaurant Location', // You might want to get this from merchant data
-              'delivery_address': deliveryAddress,
-              'estimated_distance': 2.5, // You might want to calculate this
-              'estimated_time': 15, // You might want to calculate this
-            })
+          'customer_id': userId,
+          'merchant_id': merchantId,
+          'status': 'pending',
+          'total_amount': merchantTotal,
+          'delivery_fee': proportionalDeliveryFee,
+          'tip_amount': 0.0,
+          'pickup_address': 'Restaurant Location', // You might want to get this from merchant data
+          'delivery_address': deliveryAddress,
+          'estimated_distance': 2.5, // You might want to calculate this
+          'estimated_time': 15, // You might want to calculate this
+        })
             .select()
             .single();
-        
+
         print('DEBUG: Order created: ${orderResponse['id']}');
-        
+
+        // Store the first order ID
+        firstOrderId ??= orderResponse['id'];
+
         // Create order items
         for (final item in items) {
           await Supabase.instance.client
               .from('order_items')
               .insert({
-                'order_id': orderResponse['id'],
-                'food_id': item['id'],
-                'quantity': item['quantity'] ?? 1,
-                'unit_price': item['price'] ?? 0.0,
-                'add_ons': item['add_ons'] ?? [],
-              });
+            'order_id': orderResponse['id'],
+            'food_id': item['id'],
+            'quantity': item['quantity'] ?? 1,
+            'unit_price': item['price'] ?? 0.0,
+            'add_ons': item['addOns'] ?? [],
+          });
         }
-        
+
         print('DEBUG: Order items created for order ${orderResponse['id']}');
       }
-      
+
       print('DEBUG: All orders created successfully');
-      return true;
+      return {
+        'orderId': firstOrderId,
+        'totalAmount': totalAmount,
+        'deliveryAddress': deliveryAddress,
+        'paymentMethod': paymentMethod,
+      };
     } catch (e) {
       print('DEBUG: Error creating order: $e');
-      return false;
+      return null;
     }
   }
 
   Future<void> _fetchDynamicMerchants() async {
     try {
       print('DEBUG: Fetching merchants...');
-      
+
       // Fetch all users who are admins or restaurants (merchants)
       final response = await Supabase.instance.client
           .from('users')
           .select()
           .or('role.eq.admin,role.eq.restaurant');
-      
+
+      if (!mounted) return;
+
       print('DEBUG: Users response: $response');
       final allMerchants = List<Map<String, dynamic>>.from(response as List);
       print('DEBUG: Found ${allMerchants.length} potential merchants');
@@ -262,15 +285,22 @@ class _MenuScreenState extends State<MenuScreen> {
       // Only include merchants who have at least one food
       List<Map<String, dynamic>> dynamicMerchants = [];
       for (final merchant in allMerchants) {
+        if (!mounted) return;
+
         final foods = await Supabase.instance.client
             .from('foods')
             .select('id')
             .eq('created_by', merchant['id']);
+
+        if (!mounted) return;
+
         if (foods.isNotEmpty) {
           print('DEBUG: Merchant ${merchant['name']} has ${foods.length} foods');
           dynamicMerchants.add(merchant);
         }
       }
+
+      if (!mounted) return;
 
       print('DEBUG: Final merchants count: ${dynamicMerchants.length}');
       setState(() {
@@ -279,9 +309,11 @@ class _MenuScreenState extends State<MenuScreen> {
       });
     } catch (e) {
       print('DEBUG: Error fetching merchants: $e');
-      setState(() {
-        _isLoadingDynamicMerchants = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoadingDynamicMerchants = false;
+        });
+      }
     }
   }
 
@@ -319,7 +351,7 @@ class _MenuScreenState extends State<MenuScreen> {
 
   Future<void> _addToCart(Map<String, dynamic> item, List<Map<String, dynamic>> addOns) async {
     print('DEBUG: Adding to cart - item: ${item['name']}, id: ${item['id']}, created_by: ${item['created_by']}');
-    
+
     final userId = await _getCurrentUserId();
     if (userId == null) {
       print('DEBUG: No user ID found for adding to cart');
@@ -344,7 +376,7 @@ class _MenuScreenState extends State<MenuScreen> {
         // Update quantity in database
         final cartItem = _cartItems[existingIndex];
         final newQuantity = (cartItem['quantity'] ?? 1) + 1;
-        
+
         await Supabase.instance.client
             .from('cart_items')
             .update({'quantity': newQuantity})
@@ -370,11 +402,11 @@ class _MenuScreenState extends State<MenuScreen> {
         await Supabase.instance.client
             .from('cart_items')
             .insert({
-              'customer_id': userId,
-              'food_id': item['id'],
-              'quantity': 1,
-              'add_ons': addOns,
-            });
+          'customer_id': userId,
+          'food_id': item['id'],
+          'quantity': 1,
+          'add_ons': addOns,
+        });
 
         setState(() {
           _cartItems.add({
@@ -417,7 +449,7 @@ class _MenuScreenState extends State<MenuScreen> {
       if (userId == null) return;
 
       final item = _cartItems[index];
-      
+
       if (newQuantity <= 0) {
         // Remove item from database
         await Supabase.instance.client
@@ -481,7 +513,7 @@ class _MenuScreenState extends State<MenuScreen> {
       double addOnsTotal = addOns.fold(0.0, (addOnTotal, addOn) => addOnTotal + addOn['price']) * (item['quantity'] ?? 1);
       return total + itemTotal + addOnsTotal;
     });
-    
+
     // Add delivery fee
     const deliveryFee = 3.0;
     return subtotal + deliveryFee;
@@ -527,11 +559,18 @@ class _MenuScreenState extends State<MenuScreen> {
     setState(() {
       _currentIndex = index;
     });
-    
+
     if (index == 1) {
       // Favorites page
       _showFavoritesPage();
     } else if (index == 2) {
+      // My Orders page - navigate to My Orders screen
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => MyOrdersScreen(userId: widget.userId),
+        ),
+      );
+    } else if (index == 3) {
       // Profile page
       _showProfilePage();
     }
@@ -547,94 +586,94 @@ class _MenuScreenState extends State<MenuScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) {
           return Container(
-        height: MediaQuery.of(context).size.height * 0.7,
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            height: MediaQuery.of(context).size.height * 0.7,
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'My Favorites',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                IconButton(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-                if (_favoriteFoods.isEmpty)
-              const Expanded(
-                child: Center(
-                  child: Text(
-                    'No favorites yet!\nTap the heart icon to add items to your favorites.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.grey,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'My Favorites',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
                 ),
-              )
-            else
-              Expanded(
-                child: ListView.builder(
-                      itemCount: _favoriteFoods.length,
-                  itemBuilder: (context, index) {
-                        final item = _favoriteFoods[index];
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: ListTile(
-                        leading: ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: item['image_url'] != null && item['image_url'].toString().isNotEmpty
-                              ? Image.network(
-                                  item['image_url'],
-                                  width: 60,
-                                  height: 60,
-                                  fit: BoxFit.cover,
-                                      errorBuilder: (context, error, stackTrace) => Container(
-                                        width: 60,
-                                        height: 60,
-                                        color: Colors.grey[200],
-                                        child: const Icon(Icons.broken_image),
-                                      ),
-                                    )
-                                  : Container(
-                                      width: 60,
-                                      height: 60,
-                                      color: Colors.grey[200],
-                                      child: const Icon(Icons.fastfood, size: 40),
-                                    ),
-                        ),
-                        title: Text(
-                              item['name'] ?? 'Food Item',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: Text('SAR ${item['price']?.toStringAsFixed(2) ?? ''}'),
-                        trailing: IconButton(
-                          onPressed: () {
-                                _toggleFavorite(item);
-                                setModalState(() {}); // Refresh the modal
-                          },
-                              icon: const Icon(
-                            Icons.favorite,
-                            color: Colors.red,
-                          ),
+                const SizedBox(height: 20),
+                if (_favoriteFoods.isEmpty)
+                  const Expanded(
+                    child: Center(
+                      child: Text(
+                        'No favorites yet!\nTap the heart icon to add items to your favorites.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.grey,
                         ),
                       ),
-                    );
-                  },
-                ),
-              ),
-          ],
-        ),
+                    ),
+                  )
+                else
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: _favoriteFoods.length,
+                      itemBuilder: (context, index) {
+                        final item = _favoriteFoods[index];
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          child: ListTile(
+                            leading: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: item['image_url'] != null && item['image_url'].toString().isNotEmpty
+                                  ? Image.network(
+                                item['image_url'],
+                                width: 60,
+                                height: 60,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) => Container(
+                                  width: 60,
+                                  height: 60,
+                                  color: Colors.grey[200],
+                                  child: const Icon(Icons.broken_image),
+                                ),
+                              )
+                                  : Container(
+                                width: 60,
+                                height: 60,
+                                color: Colors.grey[200],
+                                child: const Icon(Icons.fastfood, size: 40),
+                              ),
+                            ),
+                            title: Text(
+                              item['name'] ?? 'Food Item',
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            subtitle: Text('SAR ${item['price']?.toStringAsFixed(2) ?? ''}'),
+                            trailing: IconButton(
+                              onPressed: () {
+                                _toggleFavorite(item);
+                                setModalState(() {}); // Refresh the modal
+                              },
+                              icon: const Icon(
+                                Icons.favorite,
+                                color: Colors.red,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
           );
         },
       ),
@@ -771,7 +810,7 @@ class _MenuScreenState extends State<MenuScreen> {
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (context) => const LoginScreen()),
-          (route) => false,
+              (route) => false,
         );
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -870,28 +909,28 @@ class _MenuScreenState extends State<MenuScreen> {
                                         borderRadius: BorderRadius.circular(8),
                                         child: item['image_url'] != null && item['image_url'].toString().isNotEmpty
                                             ? Image.network(
-                                                item['image_url'],
+                                          item['image_url'],
                                           width: 60,
                                           height: 60,
                                           fit: BoxFit.cover,
-                                                errorBuilder: (context, error, stackTrace) => Container(
-                                                  width: 60,
-                                                  height: 60,
-                                                  color: Colors.grey[200],
-                                                  child: const Icon(Icons.broken_image),
-                                                ),
-                                              )
+                                          errorBuilder: (context, error, stackTrace) => Container(
+                                            width: 60,
+                                            height: 60,
+                                            color: Colors.grey[200],
+                                            child: const Icon(Icons.broken_image),
+                                          ),
+                                        )
                                             : Image.asset(
-                                                item['image'] ?? 'assets/images/food_image_1.jpg',
-                                                width: 60,
-                                                height: 60,
-                                                fit: BoxFit.cover,
-                                                errorBuilder: (context, error, stackTrace) => Container(
-                                                  width: 60,
-                                                  height: 60,
-                                                  color: Colors.grey[200],
-                                                  child: const Icon(Icons.broken_image),
-                                                ),
+                                          item['image'] ?? 'assets/images/food_image_1.jpg',
+                                          width: 60,
+                                          height: 60,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (context, error, stackTrace) => Container(
+                                            width: 60,
+                                            height: 60,
+                                            color: Colors.grey[200],
+                                            child: const Icon(Icons.broken_image),
+                                          ),
                                         ),
                                       ),
                                       const SizedBox(width: 12),
@@ -914,20 +953,20 @@ class _MenuScreenState extends State<MenuScreen> {
                                                   children: addOns.map((addOn) => Padding(
                                                     padding: const EdgeInsets.only(bottom: 2),
                                                     child: Row(
-                                                    children: [
+                                                      children: [
                                                         Expanded(
                                                           child: Text(
-                                                        '+ ${addOn['name']}',
-                                                        style: const TextStyle(fontSize: 13, color: Colors.grey),
+                                                            '+ ${addOn['name']}',
+                                                            style: const TextStyle(fontSize: 13, color: Colors.grey),
                                                             overflow: TextOverflow.ellipsis,
-                                                      ),
+                                                          ),
                                                         ),
                                                         const SizedBox(width: 8),
-                                                      Text(
-                                                        'SAR ${addOn['price'].toStringAsFixed(2)}',
-                                                        style: TextStyle(fontSize: 13, color: AppConstants.primaryColor),
-                                                      ),
-                                                    ],
+                                                        Text(
+                                                          'SAR ${addOn['price'].toStringAsFixed(2)}',
+                                                          style: TextStyle(fontSize: 13, color: AppConstants.primaryColor),
+                                                        ),
+                                                      ],
                                                     ),
                                                   )).toList(),
                                                 ),
@@ -1067,11 +1106,11 @@ class _MenuScreenState extends State<MenuScreen> {
   }
 
   void _showFoodDetailsModalWithAddOns(
-    Map<String, dynamic> foodItem,
-    List<Map<String, dynamic>> selectedAddOns,
-    double totalPrice, {
-    void Function(Map<String, dynamic>)? addAddOn,
-  }) {
+      Map<String, dynamic> foodItem,
+      List<Map<String, dynamic>> selectedAddOns,
+      double totalPrice, {
+        void Function(Map<String, dynamic>)? addAddOn,
+      }) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1096,19 +1135,19 @@ class _MenuScreenState extends State<MenuScreen> {
                       borderRadius: BorderRadius.zero,
                       child: foodItem['image_url'] != null && foodItem['image_url'].toString().isNotEmpty
                           ? Image.network(
-                              foodItem['image_url'],
-                              width: double.infinity,
-                              height: double.infinity,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => Container(
-                                color: Colors.grey[200],
-                                width: double.infinity,
-                                height: double.infinity,
-                                child: const Center(child: Icon(Icons.broken_image)),
-                              ),
-                            )
+                        foodItem['image_url'],
+                        width: double.infinity,
+                        height: double.infinity,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => Container(
+                          color: Colors.grey[200],
+                          width: double.infinity,
+                          height: double.infinity,
+                          child: const Center(child: Icon(Icons.broken_image)),
+                        ),
+                      )
                           : Image.asset(
-                              foodItem['image'] ?? 'assets/images/food_image_1.jpg',
+                        foodItem['image'] ?? 'assets/images/food_image_1.jpg',
                         width: double.infinity,
                         height: double.infinity,
                         fit: BoxFit.cover,
@@ -1207,24 +1246,24 @@ class _MenuScreenState extends State<MenuScreen> {
                           ),
                         ),
                         ...selectedAddOns.map((addOn) => Padding(
-                              padding: const EdgeInsets.only(top: 4),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    addOn['name'],
-                                    style: const TextStyle(fontSize: 14),
-                                  ),
-                                  Text(
-                                    '+ SAR ${addOn['price'].toStringAsFixed(2)}',
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      color: Color(0xFFd00000),
-                                    ),
-                                  ),
-                                ],
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                addOn['name'],
+                                style: const TextStyle(fontSize: 14),
                               ),
-                            )),
+                              Text(
+                                '+ SAR ${addOn['price'].toStringAsFixed(2)}',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: Color(0xFFd00000),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )),
                       ],
                       const SizedBox(height: 24),
                       SizedBox(
@@ -1282,10 +1321,10 @@ class _MenuScreenState extends State<MenuScreen> {
                           ElevatedButton.icon(
                             onPressed: () async {
                               await _addToCart(foodItem, selectedAddOns);
-                              
+
                               // Close modal first
                               Navigator.pop(context);
-                              
+
                               // Use a post-frame callback to ensure the modal is closed
                               WidgetsBinding.instance.addPostFrameCallback((_) {
                                 if (mounted) {
@@ -1295,7 +1334,7 @@ class _MenuScreenState extends State<MenuScreen> {
                                       backgroundColor: AppConstants.primaryColor,
                                     ),
                                   );
-                                  
+
                                   // Navigate to home screen safely
                                   Navigator.of(context).popUntil((route) => route.isFirst);
                                 }
@@ -1434,7 +1473,7 @@ class _MenuScreenState extends State<MenuScreen> {
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(
-            category == 'Dessert' ? Icons.cake : 
+            category == 'Dessert' ? Icons.cake :
             category == 'Drink' ? Icons.local_drink : Icons.fastfood,
             color: AppConstants.primaryColor,
           ),
@@ -1486,7 +1525,7 @@ class _MenuScreenState extends State<MenuScreen> {
     String paymentMethod = '';
     String onlinePaymentType = '';
     String error = '';
-    
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1635,29 +1674,29 @@ class _MenuScreenState extends State<MenuScreen> {
                                     borderRadius: BorderRadius.circular(8),
                                     child: item['image_url'] != null && item['image_url'].toString().isNotEmpty
                                         ? Image.network(
-                                            item['image_url'],
-                                            width: 48,
-                                            height: 48,
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (context, error, stackTrace) => Container(
-                                              width: 48,
-                                              height: 48,
-                                              color: Colors.grey[200],
-                                              child: const Icon(Icons.broken_image, size: 24),
-                                            ),
-                                          )
+                                      item['image_url'],
+                                      width: 48,
+                                      height: 48,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (context, error, stackTrace) => Container(
+                                        width: 48,
+                                        height: 48,
+                                        color: Colors.grey[200],
+                                        child: const Icon(Icons.broken_image, size: 24),
+                                      ),
+                                    )
                                         : Image.asset(
-                                            item['image'] ?? 'assets/images/food_image_1.jpg',
-                                            width: 48,
-                                            height: 48,
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (context, error, stackTrace) => Container(
-                                              width: 48,
-                                              height: 48,
-                                              color: Colors.grey[200],
-                                              child: const Icon(Icons.broken_image, size: 24),
-                                            ),
-                                          ),
+                                      item['image'] ?? 'assets/images/food_image_1.jpg',
+                                      width: 48,
+                                      height: 48,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (context, error, stackTrace) => Container(
+                                        width: 48,
+                                        height: 48,
+                                        color: Colors.grey[200],
+                                        child: const Icon(Icons.broken_image, size: 24),
+                                      ),
+                                    ),
                                   ),
                                   title: Text(item['name'] ?? 'Food Item', style: const TextStyle(fontWeight: FontWeight.bold)),
                                   subtitle: Column(
@@ -1757,36 +1796,38 @@ class _MenuScreenState extends State<MenuScreen> {
                               setModalState(() {
                                 error = 'Processing order...';
                               });
-                              
-                              final success = await _createOrder(
+
+                              final orderData = await _createOrder(
                                 addressController.text.trim(),
                                 paymentMethod,
                               );
-                              
-                              if (success) {
+
+                              if (orderData != null) {
                                 setModalState(() {
                                   error = '';
                                 });
-                                
+
+                                // Save cart items before clearing
+                                final orderItemsCopy = List<Map<String, dynamic>>.from(_cartItems);
+
+                                // Clear cart
+                                await _clearCart();
+
                                 // Close checkout modal first
                                 Navigator.pop(context);
-                                
-                                // Use a post-frame callback to ensure the modal is closed
-                                WidgetsBinding.instance.addPostFrameCallback((_) {
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Order placed successfully!'),
-                                        backgroundColor: AppConstants.primaryColor,
-                                      ),
-                                    );
-                                    
-                                    // Navigate to home screen safely
-                                    Navigator.of(context).popUntil((route) => route.isFirst);
-                                  }
-                                });
-                                
-                                await _clearCart();
+
+                                // Navigate to order confirmation screen
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (context) => OrderConfirmationScreen(
+                                      orderId: orderData['orderId'],
+                                      orderItems: orderItemsCopy,
+                                      totalAmount: orderData['totalAmount'],
+                                      deliveryAddress: orderData['deliveryAddress'],
+                                      paymentMethod: orderData['paymentMethod'],
+                                    ),
+                                  ),
+                                );
                               } else {
                                 setModalState(() {
                                   error = 'Failed to place order. Please try again.';
@@ -1915,10 +1956,10 @@ class _MenuScreenState extends State<MenuScreen> {
                           paymentType == 'Card'
                               ? 'Card Payment'
                               : paymentType == 'Mada'
-                                  ? 'Mada Payment'
-                                  : paymentType == 'STC Pay'
-                                      ? 'STC Pay Payment'
-                                      : 'Bank Transfer',
+                              ? 'Mada Payment'
+                              : paymentType == 'STC Pay'
+                              ? 'STC Pay Payment'
+                              : 'Bank Transfer',
                           style: const TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.bold,
@@ -2012,52 +2053,52 @@ class _MenuScreenState extends State<MenuScreen> {
                         onPressed: isProcessing
                             ? null
                             : () async {
-                                setModalState(() {
-                                  isProcessing = true;
-                                  error = '';
-                                });
-                                await Future.delayed(const Duration(seconds: 2)); // Simulate payment
-                                // Simulate validation
-                                if (paymentType == 'Card' || paymentType == 'Mada') {
-                                  if (cardController.text.length < 12 || expiryController.text.isEmpty || cvvController.text.length < 3 || nameController.text.isEmpty) {
-                                    setModalState(() {
-                                      error = 'Please enter valid card details.';
-                                      isProcessing = false;
-                                    });
-                                    return;
-                                  }
-                                }
-                                // Simulate random payment failure (10% chance)
-                                if (DateTime.now().millisecondsSinceEpoch % 10 == 0) {
-                                  setModalState(() {
-                                    error = 'Payment failed. Please try again.';
-                                    isProcessing = false;
-                                  });
-                                  return;
-                                }
-                                // Success
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Payment successful! Your order has been placed.'),
-                                      backgroundColor: AppConstants.primaryColor,
-                                    ),
-                                  );
-                                  
-                                  // Close modal first
-                                  Navigator.pop(context);
-                                  
-                                  // Use a post-frame callback to ensure the modal is closed
-                                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                                    if (mounted) {
-                                      // Navigate to home screen safely
-                                      Navigator.of(context).popUntil((route) => route.isFirst);
-                                    }
-                                  });
-                                  
-                                  await _clearCart();
-                                }
-                              },
+                          setModalState(() {
+                            isProcessing = true;
+                            error = '';
+                          });
+                          await Future.delayed(const Duration(seconds: 2)); // Simulate payment
+                          // Simulate validation
+                          if (paymentType == 'Card' || paymentType == 'Mada') {
+                            if (cardController.text.length < 12 || expiryController.text.isEmpty || cvvController.text.length < 3 || nameController.text.isEmpty) {
+                              setModalState(() {
+                                error = 'Please enter valid card details.';
+                                isProcessing = false;
+                              });
+                              return;
+                            }
+                          }
+                          // Simulate random payment failure (10% chance)
+                          if (DateTime.now().millisecondsSinceEpoch % 10 == 0) {
+                            setModalState(() {
+                              error = 'Payment failed. Please try again.';
+                              isProcessing = false;
+                            });
+                            return;
+                          }
+                          // Success
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Payment successful! Your order has been placed.'),
+                                backgroundColor: AppConstants.primaryColor,
+                              ),
+                            );
+
+                            // Close modal first
+                            Navigator.pop(context);
+
+                            // Use a post-frame callback to ensure the modal is closed
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (mounted) {
+                                // Navigate to home screen safely
+                                Navigator.of(context).popUntil((route) => route.isFirst);
+                              }
+                            });
+
+                            await _clearCart();
+                          }
+                        },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFFd00000),
                           foregroundColor: Colors.white,
@@ -2068,21 +2109,21 @@ class _MenuScreenState extends State<MenuScreen> {
                         ),
                         child: isProcessing
                             ? const SizedBox(
-                                width: 24,
-                                height: 24,
-                                child: CircularProgressIndicator(
-                                  color: Colors.white,
-                                  strokeWidth: 2.5,
-                                ),
-                              )
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2.5,
+                          ),
+                        )
                             : Text(
-                                paymentType == 'STC Pay'
-                                    ? 'Continue to STC Pay'
-                                    : paymentType == 'Bank Transfer'
-                                        ? 'I have transferred'
-                                        : 'Pay Now',
-                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                              ),
+                          paymentType == 'STC Pay'
+                              ? 'Continue to STC Pay'
+                              : paymentType == 'Bank Transfer'
+                              ? 'I have transferred'
+                              : 'Pay Now',
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                        ),
                       ),
                     ),
                   ],
@@ -2104,7 +2145,7 @@ class _MenuScreenState extends State<MenuScreen> {
           .eq('created_by', merchantId)
           .order('created_at', ascending: false)
           .limit(4);
-      
+
       final foods = List<Map<String, dynamic>>.from(response as List);
       return foods;
     } catch (e) {
@@ -2117,20 +2158,20 @@ class _MenuScreenState extends State<MenuScreen> {
     return GestureDetector(
       onTap: () => _showFoodDetailsModal(food),
       child: Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha((255 * 0.1).round()),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withAlpha((255 * 0.1).round()),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
         child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Stack(
               children: [
                 Container(
@@ -2141,27 +2182,27 @@ class _MenuScreenState extends State<MenuScreen> {
                       topRight: Radius.circular(12),
                     ),
                   ),
-                child: ClipRRect(
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(12),
-                    topRight: Radius.circular(12),
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(12),
+                      topRight: Radius.circular(12),
+                    ),
+                    child: food['image_url'] != null && food['image_url'].toString().isNotEmpty
+                        ? Image.network(
+                      food['image_url'],
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      errorBuilder: (context, error, stackTrace) => Container(
+                        color: Colors.grey[200],
+                        child: const Center(child: Icon(Icons.broken_image)),
+                      ),
+                    )
+                        : Container(
+                      color: Colors.grey[200],
+                      child: const Center(child: Icon(Icons.fastfood)),
+                    ),
                   ),
-                  child: food['image_url'] != null && food['image_url'].toString().isNotEmpty
-                      ? Image.network(
-                          food['image_url'],
-                          fit: BoxFit.cover,
-                            width: double.infinity,
-                          errorBuilder: (context, error, stackTrace) => Container(
-                            color: Colors.grey[200],
-                            child: const Center(child: Icon(Icons.broken_image)),
-                          ),
-                        )
-                      : Container(
-                          color: Colors.grey[200],
-                          child: const Center(child: Icon(Icons.fastfood)),
-                        ),
                 ),
-              ),
                 // Heart icon overlay
                 Positioned(
                   top: 8,
@@ -2184,71 +2225,71 @@ class _MenuScreenState extends State<MenuScreen> {
                 ),
               ],
             ),
-              Expanded(
-                child: Padding(
+            Expanded(
+              child: Padding(
                 padding: const EdgeInsets.all(8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
                       food['name'] ?? 'Food Item',
-                        style: const TextStyle(
+                      style: const TextStyle(
                         fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.black87,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.black87,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     const SizedBox(height: 2),
-                      Text(
+                    Text(
                       food['description'] ?? 'No description available',
-                        style: const TextStyle(
+                      style: const TextStyle(
                         fontSize: 12,
-                          fontWeight: FontWeight.w400,
-                          color: Colors.black54,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+                        fontWeight: FontWeight.w400,
+                        color: Colors.black54,
                       ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     const SizedBox(height: 4),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
                         Expanded(
-                            child: Text(
+                          child: Text(
                             'SAR ${(food['price'] ?? 0.0).toStringAsFixed(2)}',
-                              style: const TextStyle(
+                            style: const TextStyle(
                               fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: AppConstants.primaryColor,
-                              ),
-                              overflow: TextOverflow.ellipsis,
+                              fontWeight: FontWeight.w700,
+                              color: AppConstants.primaryColor,
                             ),
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          GestureDetector(
-                            onTap: onAddToCart,
-                            child: Container(
+                        ),
+                        GestureDetector(
+                          onTap: onAddToCart,
+                          child: Container(
                             padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: AppConstants.primaryColor,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.add,
-                                color: Colors.white,
+                            decoration: BoxDecoration(
+                              color: AppConstants.primaryColor,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.add,
+                              color: Colors.white,
                               size: 16,
-                              ),
                             ),
                           ),
-                        ],
-                      ),
-                    ],
-                  ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2293,7 +2334,7 @@ class _MenuScreenState extends State<MenuScreen> {
                   ),
                 );
               }
-              
+
               final foods = snapshot.data!;
               return GridView.builder(
                 shrinkWrap: true,
@@ -2629,18 +2670,18 @@ class _MenuScreenState extends State<MenuScreen> {
                           Padding(
                             padding: const EdgeInsets.only(top: 6),
                             child: Text(
-                            "Let Mappia deliver it fast!",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                              shadows: [
-                                Shadow(
-                                  offset: const Offset(1, 1),
-                                  blurRadius: 3,
-                                  color: Colors.black.withAlpha((255 * 0.8).round()),
-                                ),
-                              ],
+                              "Let Mappia deliver it fast!",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                shadows: [
+                                  Shadow(
+                                    offset: const Offset(1, 1),
+                                    blurRadius: 3,
+                                    color: Colors.black.withAlpha((255 * 0.8).round()),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
@@ -2654,7 +2695,7 @@ class _MenuScreenState extends State<MenuScreen> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: List.generate(
                           _carouselImages.length,
-                          (index) => AnimatedContainer(
+                              (index) => AnimatedContainer(
                             duration: const Duration(milliseconds: 300),
                             margin: const EdgeInsets.symmetric(horizontal: 4),
                             width: _currentPage == index ? 20 : 8,
@@ -2730,50 +2771,50 @@ class _MenuScreenState extends State<MenuScreen> {
               Padding(
                 padding: const EdgeInsets.only(top: 24),
                 child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppConstants.paddingMedium,
-                  vertical: AppConstants.paddingMedium,
-                ),
-                child: Column(
-                  children: [
-                    // Header row
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Recommended for you',
-                          style: TextStyle(
-                            fontSize: 19,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.black87,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppConstants.paddingMedium,
+                    vertical: AppConstants.paddingMedium,
+                  ),
+                  child: Column(
+                    children: [
+                      // Header row
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Recommended for you',
+                            style: TextStyle(
+                              fontSize: 19,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.black87,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    // Horizontal scrollable recommended food cards
-                    buildRecommendedFoods(),
-                    const SizedBox(height: 16),
-                    // See more button below the cards
-                    Center(
-                      child: GestureDetector(
-                        onTap: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('See more pressed!')),
-                          );
-                        },
-                        child: const Text(
-                          'See more',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: AppConstants.primaryColor,
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      // Horizontal scrollable recommended food cards
+                      buildRecommendedFoods(),
+                      const SizedBox(height: 16),
+                      // See more button below the cards
+                      Center(
+                        child: GestureDetector(
+                          onTap: () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('See more pressed!')),
+                            );
+                          },
+                          child: const Text(
+                            'See more',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: AppConstants.primaryColor,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
                 ),
               ),
               // Merchants section (new, under recommendations)
@@ -2796,37 +2837,37 @@ class _MenuScreenState extends State<MenuScreen> {
                     const SizedBox(height: 16),
                     _isLoadingDynamicMerchants
                         ? const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(20),
-                              child: CircularProgressIndicator(),
-                            ),
-                          )
+                      child: Padding(
+                        padding: EdgeInsets.all(20),
+                        child: CircularProgressIndicator(),
+                      ),
+                    )
                         : _dynamicMerchants.isEmpty
-                            ? const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(20),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.store, size: 48, color: Colors.grey),
-                                  SizedBox(height: 16),
-                                  Text(
-                                    'No merchants available',
-                                    style: TextStyle(fontSize: 16, color: Colors.grey),
-                                  ),
-                                  SizedBox(height: 8),
-                                  Text(
-                                    'Check back later for new merchants',
-                                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                                  ),
-                                ],
-                              ),
+                        ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(20),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.store, size: 48, color: Colors.grey),
+                            SizedBox(height: 16),
+                            Text(
+                              'No merchants available',
+                              style: TextStyle(fontSize: 16, color: Colors.grey),
                             ),
-                              )
-                            : Column(
-                                children: _dynamicMerchants.map((merchant) {
-                            return buildMerchantPreview(merchant);
-                          }).toList(),
+                            SizedBox(height: 8),
+                            Text(
+                              'Check back later for new merchants',
+                              style: TextStyle(fontSize: 12, color: Colors.grey),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                        : Column(
+                      children: _dynamicMerchants.map((merchant) {
+                        return buildMerchantPreview(merchant);
+                      }).toList(),
                     ),
                   ],
                 ),
@@ -2860,6 +2901,10 @@ class _MenuScreenState extends State<MenuScreen> {
             BottomNavigationBarItem(
               icon: Icon(Icons.favorite),
               label: 'Favorites',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.receipt_long),
+              label: 'My Orders',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.person),
@@ -2906,17 +2951,17 @@ class _MenuScreenState extends State<MenuScreen> {
                         borderRadius: BorderRadius.circular(12),
                         child: food['image_url'] != null && food['image_url'].toString().isNotEmpty
                             ? Image.network(
-                                food['image_url'],
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) => Container(
-                                  color: Colors.grey[200],
-                                  child: const Center(child: Icon(Icons.broken_image)),
-                                ),
-                              )
+                          food['image_url'],
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => Container(
+                            color: Colors.grey[200],
+                            child: const Center(child: Icon(Icons.broken_image)),
+                          ),
+                        )
                             : Container(
-                                color: Colors.grey[200],
-                                child: const Center(child: Icon(Icons.fastfood)),
-                              ),
+                          color: Colors.grey[200],
+                          child: const Center(child: Icon(Icons.fastfood)),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -2994,18 +3039,18 @@ class _MenuScreenState extends State<MenuScreen> {
                             ),
                             child: food['image_url'] != null && food['image_url'].toString().isNotEmpty
                                 ? Image.network(
-                                    food['image_url'],
-                                    fit: BoxFit.cover,
-                                    width: double.infinity,
-                                    errorBuilder: (context, error, stackTrace) => Container(
-                                      color: Colors.grey[200],
-                                      child: const Center(child: Icon(Icons.broken_image)),
-                                    ),
-                                  )
+                              food['image_url'],
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                              errorBuilder: (context, error, stackTrace) => Container(
+                                color: Colors.grey[200],
+                                child: const Center(child: Icon(Icons.broken_image)),
+                              ),
+                            )
                                 : Container(
-                                    color: Colors.grey[200],
-                                    child: const Center(child: Icon(Icons.fastfood)),
-                                  ),
+                              color: Colors.grey[200],
+                              child: const Center(child: Icon(Icons.fastfood)),
+                            ),
                           ),
                         ),
                         // Heart icon overlay
@@ -3066,10 +3111,10 @@ class _MenuScreenState extends State<MenuScreen> {
                                 Expanded(
                                   child: Text(
                                     'SAR ${(food['price'] ?? 0.0).toStringAsFixed(2)}',
-                                  style: const TextStyle(
+                                    style: const TextStyle(
                                       fontSize: 14,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppConstants.primaryColor,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppConstants.primaryColor,
                                     ),
                                     overflow: TextOverflow.ellipsis,
                                   ),

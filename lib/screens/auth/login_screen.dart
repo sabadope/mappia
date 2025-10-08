@@ -42,7 +42,7 @@ class _LoginScreenState extends State<LoginScreen> {
   // Helper function to handle navigation after successful login
   void _navigateAfterLogin(String role, String userId, String name) {
     Widget nextScreen;
-    
+
     switch (role) {
       case 'admin':
         nextScreen = const AdminMainScreen(initialTabIndex: 0);
@@ -56,7 +56,7 @@ class _LoginScreenState extends State<LoginScreen> {
       default:
         nextScreen = MenuScreen(userName: name, userId: userId);
     }
-    
+
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (context) => nextScreen),
@@ -76,14 +76,14 @@ class _LoginScreenState extends State<LoginScreen> {
       final email = _emailController.text.trim();
       final password = _passwordController.text;
       final hashedPassword = sha256.convert(utf8.encode(password)).toString();
-      
+
       // First, check if user exists in users table
       final userData = await Supabase.instance.client
           .from('users')
           .select('id, role, name, password')
           .eq('email', email)
           .maybeSingle();
-          
+
       if (userData == null) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -92,11 +92,11 @@ class _LoginScreenState extends State<LoginScreen> {
         setState(() => _isLoading = false);
         return;
       }
-      
+
       final role = userData['role'] as String;
       final name = userData['name'] as String? ?? email;
       final userId = userData['id'] as String;
-      
+
       // Verify password hash
       if (userData['password'] != hashedPassword) {
         if (!mounted) return;
@@ -106,7 +106,7 @@ class _LoginScreenState extends State<LoginScreen> {
         setState(() => _isLoading = false);
         return;
       }
-      
+
       // For admin users, use Supabase auth
       if (role == 'admin') {
         try {
@@ -114,7 +114,7 @@ class _LoginScreenState extends State<LoginScreen> {
             email: email,
             password: password,
           );
-          
+
           if (authResponse.user == null) {
             throw Exception('Failed to authenticate admin');
           }
@@ -127,15 +127,15 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
       }
-      
+
       // For all users, navigate to the appropriate screen
       if (mounted) {
         _navigateAfterLogin(role, userId, name);
       }
-      
+
       // Now that we're authenticated, determine where to navigate
       Widget nextScreen;
-      
+
       if (role == 'admin') {
         nextScreen = const AdminMainScreen(initialTabIndex: 0);
       } else if (role == 'rider') {
@@ -152,17 +152,17 @@ class _LoginScreenState extends State<LoginScreen> {
       } else {
         nextScreen = MenuScreen(userName: name, userId: userId);
       }
-      
+
       if (!mounted) return;
-      
+
       // Wait a brief moment to ensure auth state is properly updated
       await Future.delayed(const Duration(milliseconds: 300));
-      
+
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => nextScreen),
       );
-      
+
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -311,4 +311,4 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
-} 
+}
